@@ -1,0 +1,32 @@
+{
+  "style-text": [
+    {
+      "role": "user",
+      "content": "Describe the style of this product in a few words."
+    },
+    {
+      "role": "assistant",
+      "content": "Sure, this product looks {style_keywords}."
+    }
+  ],
+  "use-case-text": [
+    {
+      "role": "user",
+      "content": "Tell me some ways I could use this product."
+    },
+    {
+      "role": "assistant",
+      "content": "This product is great for {use_case_1} and {use_case_2}."
+    }
+  ],
+  "attributes": [
+    {
+      "role": "user",
+      "content": "List some of the key features of this product."
+    },
+    {
+      "role": "assistant",
+      "content": "This product features {attribute_1}, {attribute_2}, and {attribute_3}."
+    }
+  ]
+}
