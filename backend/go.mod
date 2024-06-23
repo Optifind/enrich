@@ -5,7 +5,7 @@ go 1.22.3
 require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lattots/openai-sdk v1.1.0
-	github.com/milvus-io/milvus-sdk-go/v2 v2.4.0
+	github.com/milvus-io/milvus-sdk-go/v2 v2.4.1
 )
 
 require (
@@ -18,7 +18,7 @@ require (
 	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0 // indirect
 	github.com/kr/pretty v0.3.0 // indirect
 	github.com/kr/text v0.2.0 // indirect
-	github.com/milvus-io/milvus-proto/go-api/v2 v2.4.0 // indirect
+	github.com/milvus-io/milvus-proto/go-api/v2 v2.4.3 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/rogpeppe/go-internal v1.8.1 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect

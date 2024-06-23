@@ -4,15 +4,16 @@ import (
 	"context"
 	"encoding/csv"
 	"fmt"
-	"github.com/lattots/enrich/pkg/config"
-	"github.com/lattots/enrich/pkg/product"
-	"github.com/lattots/enrich/pkg/prompts"
-	"github.com/lattots/openai-sdk"
-	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 	"io"
 	"log"
 	"os"
+
+	"github.com/lattots/enrich/pkg/config"
+	"github.com/lattots/enrich/pkg/product"
+	"github.com/lattots/enrich/pkg/prompts"
+	openaisdk "github.com/lattots/openai-sdk"
+	"github.com/milvus-io/milvus-sdk-go/v2/client"
+	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 )
 
 // Catalog is a struct that represents product catalog.

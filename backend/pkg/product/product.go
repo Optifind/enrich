@@ -3,8 +3,9 @@ package product
 import (
 	"errors"
 	"fmt"
+
 	"github.com/lattots/enrich/pkg/prompts"
-	"github.com/lattots/openai-sdk"
+	openaisdk "github.com/lattots/openai-sdk"
 )
 
 // Product is a struct that represents a single product in a product catalog.

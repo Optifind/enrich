@@ -3,9 +3,10 @@ package prompts
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/lattots/openai-sdk"
 	"io"
 	"os"
+
+	openaisdk "github.com/lattots/openai-sdk"
 )
 
 // Prompts is a struct for holding prompts used in chat completion creation.
