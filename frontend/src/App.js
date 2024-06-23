@@ -1,25 +1,18 @@
-import logo from './logo.svg';
+import React from 'react';
 import './App.css';
+import ProductDisplay from './Components/ProductDisplay.tsx';
+import Recommendations from './Components/Recommendations.tsx'
 
 function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+    return (
+        <div className="App">
+            <header className="App-header">
+                <h1 className="Header">Product Catalog</h1>
+            </header>
+            <ProductDisplay test-id="Product-display" />
+            <Recommendations test-id="Recommendations" />
+        </div>
+    );
 }
 
 export default App;
