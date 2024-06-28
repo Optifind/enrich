@@ -1,0 +1,26 @@
+.product-box {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 200px;
+    height: 200px;
+    border: 1px solid #ccc;
+    cursor: pointer;
+}
+
+.product-box:hover {
+    background-color: #f0f0f0;
+}
+
+.product-box img {
+    max-width: 50%;
+    max-height: 50%;
+}
+
+.product-box h4 {
+    margin: 5px;
+}
+
+.product-box p {
+    margin: 5px;
+}

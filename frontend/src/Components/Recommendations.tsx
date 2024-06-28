@@ -1,25 +1,16 @@
 import React from 'react';
 import { Product } from './../types';
+import './componentsCSS/Recommendations.css';
 
 type RecommendationsProps = {
     productIds: number[];
     products: Product[];
 };
 
-const Recommendations: React.FC<RecommendationsProps> = ({ productIds, products }) => {
-    const recommendedProducts = products.filter((product) => productIds.includes(product.id)).slice(0, 3);
-
+const Recommendations: React.FC<RecommendationsProps> = ({ products }) => {
     return (
-        <div>
+        <div className='recommended-products'>
             <h2>Recommended Products</h2>
-            <ul>
-                {recommendedProducts.map((product) => (
-                    <li key={product.id}>
-                        <h3>{product.name}</h3>
-                        <p>Price: ${product.price}</p>
-                    </li>
-                ))}
-            </ul>
         </div>
     );
 };
