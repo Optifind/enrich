@@ -11,6 +11,7 @@ import (
 // Configurations are read from JSON at runtime, so they can be changed without compiling the entire program.
 type Config struct {
 	Init Init `json:"init"`
+	API  API  `json:"api"`
 }
 
 // Init is a struct for holding configuration options related to database initialization.
@@ -26,6 +27,14 @@ type Init struct {
 
 	GPTModel        string `json:"gpt-model"`
 	EmbeddingsModel string `json:"embeddings-model"`
+}
+
+type API struct {
+	MilvusAddress     string      `json:"milvus-address"`
+	MilvusCollection  string      `json:"milvus-collection"`
+	MilvusColumnNames ColumnNames `json:"milvus-column-names"`
+
+	SecretsFilepath string `json:"secrets-filepath"`
 }
 
 // ColumnNames is a struct for holding column names used in database initialization.

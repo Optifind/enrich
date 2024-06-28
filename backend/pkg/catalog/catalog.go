@@ -8,12 +8,13 @@ import (
 	"log"
 	"os"
 
-	"github.com/lattots/enrich/pkg/config"
-	"github.com/lattots/enrich/pkg/product"
-	"github.com/lattots/enrich/pkg/prompts"
 	openaisdk "github.com/lattots/openai-sdk"
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
 	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+
+	"github.com/lattots/enrich/pkg/config"
+	"github.com/lattots/enrich/pkg/product"
+	"github.com/lattots/enrich/pkg/prompts"
 )
 
 // Catalog is a struct that represents product catalog.
@@ -245,7 +246,7 @@ func (c *Catalog) createSchema() *entity.Schema {
 				DataType:   entity.FieldTypeVarChar,
 				PrimaryKey: true,
 				TypeParams: map[string]string{
-					"max_length": "100",
+					"max_length": "10",
 				},
 			},
 			{
