@@ -11,13 +11,14 @@ import (
 
 type Handler struct {
 	MilvusClient client.Client
-	Config       config.API
+	Config       config.Config
 }
 
-func New(conf config.API) (*Handler, error) {
+// New creates a new instance of Handler with given configuration file. Returns a pointer to Handler and an error.
+func New(conf config.Config) (*Handler, error) {
 	// Milvus client configuration is created.
 	milvusConf := client.Config{
-		Address: conf.MilvusAddress,
+		Address: conf.API.MilvusAddress,
 		APIKey:  os.Getenv("MILVUS_TOKEN"),
 	}
 

@@ -15,13 +15,13 @@ import (
 
 // Product is a struct that represents a single product in a product catalog.
 type Product struct {
-	ID          string `json:"id"` // Product ID created and used by FDS
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Price       string `json:"price"` // Price in format "99,99 EUR"
+	ID          string  `json:"id"` // Product ID created and used by FDS
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Price       float32 `json:"price"`
 
-	Link  string `json:"link"`  // URL of product page
-	Image string `json:"image"` // URL of product image
+	Link  string `json:"product-url"`   // URL of product page
+	Image string `json:"product-image"` // URL of product image
 
 	StyleText   string `json:"style-text"`    // Description of products design style
 	UseCaseText string `json:"use-case-text"` // Description of products use case
@@ -50,12 +50,17 @@ func FromRow(row []string) (*Product, error) {
 		return nil, fmt.Errorf("error converting row with length %d to product", len(row))
 	}
 
+	price, err := extractPrice(row[3])
+	if err != nil {
+		return nil, fmt.Errorf("error extracting price from row: %w", err)
+	}
+
 	// Pointer to Product object is created with row's data.
 	p := &Product{
 		ID:          row[0],
 		Title:       row[1],
 		Description: row[2],
-		Price:       row[3],
+		Price:       price,
 		Link:        row[4],
 		Image:       row[5],
 	}
@@ -64,13 +69,13 @@ func FromRow(row []string) (*Product, error) {
 }
 
 // GetById fetches a product corresponding to ID from Milvus database. Returns a pointer to product and error.
-func GetById(milvusClient client.Client, config config.API, id string) (*Product, error) {
+func GetById(milvusClient client.Client, config config.Config, id string) (*Product, error) {
 	ctx := context.Background()
-	collection := config.MilvusCollection
+	collection := config.API.MilvusCollection
 	var partitionNames []string
 	// Queried row is set. For now, we use VarChar as primary key type. This might change in the future.
-	ids := entity.NewColumnVarChar("id", []string{id})
-	outputFields := []string{"title", "description", "price", "link", "image"}
+	ids := entity.NewColumnVarChar(config.Init.MilvusColumnNames.ID, []string{id})
+	outputFields := []string{"*"}
 
 	// Database is queried.
 	resultSet, err := milvusClient.QueryByPks(
@@ -82,16 +87,15 @@ func GetById(milvusClient client.Client, config config.API, id string) (*Product
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error getting product by id %s: %v", id, err)
+	} else if resultSet.Len() != 1 {
+		return nil, nil
 	}
 
 	// Result set is parsed to a slice of product pointers.
-	products, err := parseResultSet(resultSet)
+	products, err := ParseResultSet(config.Init.MilvusColumnNames, resultSet)
 	if err != nil {
 		return nil, fmt.Errorf("error parsing product by id %s: %v", id, err)
-	} else if len(products) != 1 {
-		return nil, fmt.Errorf("error getting product by id %s: expected 1 product, got %d", id, len(products))
 	}
-
 	// Pointer to product is returned.
 	return products[0], nil
 }

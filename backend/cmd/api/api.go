@@ -14,19 +14,20 @@ import (
 const configFilepath = "./data/config.json"
 
 func main() {
-	//
+	// Configuration file is loaded.
 	conf, err := config.Load(configFilepath)
 	if err != nil {
 		log.Fatalln("error loading config: ", err)
 	}
 
+	// Secrets are loaded from .env file.
 	err = godotenv.Load(conf.API.SecretsFilepath)
 	if err != nil {
 		log.Fatalln("error loading .env file: ", err)
 	}
 
 	// New handler object is created. This is used to store configurations and Milvus database handle.
-	h, err := handler.New(conf.API)
+	h, err := handler.New(conf)
 	if err != nil {
 		log.Fatalln("error creating handler: ", err)
 	}
@@ -34,8 +35,9 @@ func main() {
 	// New HTTP router is created.
 	router := http.NewServeMux()
 
-	// Routes
+	// Routes.
 	router.HandleFunc("GET /product/{id}", h.HandleGetProduct)
+	router.HandleFunc("GET /products", h.HandleGetProducts)
 
 	port := ":3000"
 	fmt.Printf("Server started on port %s\n", port)
