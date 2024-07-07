@@ -1,25 +1,24 @@
-import logo from './logo.svg';
+import React, { useState } from 'react';
 import './App.css';
+import ProductDisplay from './Components/ProductDisplay.tsx';
+import Recommendations from './Components/Recommendations.tsx'
+import { recommendedProducts } from './API/placeholder.ts';
 
 function App() {
-  return (
-    <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
-    </div>
-  );
+    const [showRecommendations, setShowRecommendations] = useState(false);
+
+    return (
+        <div className="App">
+            <header className="App-header">
+                <h1 className="Header">Optifind Enrich Demo</h1>
+            </header>
+            <ProductDisplay test-id="Product-display" />
+            <button onClick={() => setShowRecommendations(!showRecommendations)}>
+                {showRecommendations ? 'Hide Recommendations' : 'Show Recommendations'}
+            </button>
+            {showRecommendations && <Recommendations recommendedProducts={recommendedProducts} test-id="Recommendations" />}
+        </div>
+    );
 }
 
 export default App;
