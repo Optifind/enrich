@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/joho/godotenv"
+
 	"github.com/lattots/enrich/pkg/catalog"
 	"github.com/lattots/enrich/pkg/config"
 	"github.com/lattots/enrich/pkg/prompts"

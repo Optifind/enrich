@@ -1,22 +1,27 @@
 package product
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
-	"github.com/lattots/enrich/pkg/prompts"
 	openaisdk "github.com/lattots/openai-sdk"
+	"github.com/milvus-io/milvus-sdk-go/v2/client"
+	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+
+	"github.com/lattots/enrich/pkg/config"
+	"github.com/lattots/enrich/pkg/prompts"
 )
 
 // Product is a struct that represents a single product in a product catalog.
 type Product struct {
-	ID          string `json:"id"` // Product ID created and used by FDS
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Price       string `json:"price"` // Price in format "99,99 EUR"
+	ID          string  `json:"id"` // Product ID created and used by FDS
+	Title       string  `json:"title"`
+	Description string  `json:"description"`
+	Price       float32 `json:"price"`
 
-	Link  string `json:"link"`  // URL of product page
-	Image string `json:"image"` // URL of product image
+	Link  string `json:"product-url"`   // URL of product page
+	Image string `json:"product-image"` // URL of product image
 
 	StyleText   string `json:"style-text"`    // Description of products design style
 	UseCaseText string `json:"use-case-text"` // Description of products use case
@@ -45,17 +50,54 @@ func FromRow(row []string) (*Product, error) {
 		return nil, fmt.Errorf("error converting row with length %d to product", len(row))
 	}
 
+	price, err := extractPrice(row[3])
+	if err != nil {
+		return nil, fmt.Errorf("error extracting price from row: %w", err)
+	}
+
 	// Pointer to Product object is created with row's data.
 	p := &Product{
 		ID:          row[0],
 		Title:       row[1],
 		Description: row[2],
-		Price:       row[3],
+		Price:       price,
 		Link:        row[4],
 		Image:       row[5],
 	}
 	// Pointer to Product object is returned.
 	return p, nil
+}
+
+// GetById fetches a product corresponding to ID from Milvus database. Returns a pointer to product and error.
+func GetById(milvusClient client.Client, config config.Config, id string) (*Product, error) {
+	ctx := context.Background()
+	collection := config.API.MilvusCollection
+	var partitionNames []string
+	// Queried row is set. For now, we use VarChar as primary key type. This might change in the future.
+	ids := entity.NewColumnVarChar(config.Init.MilvusColumnNames.ID, []string{id})
+	outputFields := []string{"*"}
+
+	// Database is queried.
+	resultSet, err := milvusClient.QueryByPks(
+		ctx,
+		collection,
+		partitionNames,
+		ids,
+		outputFields,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error getting product by id %s: %v", id, err)
+	} else if resultSet.Len() != 1 {
+		return nil, nil
+	}
+
+	// Result set is parsed to a slice of product pointers.
+	products, err := ParseResultSet(config.Init.MilvusColumnNames, resultSet)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing product by id %s: %v", id, err)
+	}
+	// Pointer to product is returned.
+	return products[0], nil
 }
 
 // Process processes single product. This means creating style and

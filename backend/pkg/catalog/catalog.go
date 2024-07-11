@@ -3,20 +3,24 @@ package catalog
 import (
 	"context"
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"os"
+	"strings"
+
+	openaisdk "github.com/lattots/openai-sdk"
+	"github.com/milvus-io/milvus-sdk-go/v2/client"
+	"github.com/milvus-io/milvus-sdk-go/v2/entity"
 
 	"github.com/lattots/enrich/pkg/config"
 	"github.com/lattots/enrich/pkg/product"
 	"github.com/lattots/enrich/pkg/prompts"
-	openaisdk "github.com/lattots/openai-sdk"
-	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+	"github.com/lattots/enrich/pkg/vector"
 )
 
-// Catalog is a struct that represents product catalog.
+// Catalog is a struct that represents a group of products.
 type Catalog struct {
 	InputFilepath    string             // Path to the input CSV file
 	Products         []*product.Product // Slice of pointers to products that belong to the catalog
@@ -51,6 +55,52 @@ func New(conf config.Init) (*Catalog, error) {
 	}
 
 	return catalog, nil
+}
+
+// Load fetches product's in Catalog's Milvus collection to memory.
+//
+// `count` (required) determines the maximum amount of products that will be loaded.
+//
+// `ids` (optional) determines the products that will be loaded.
+//
+// Returns an error.
+func (c *Catalog) Load(count int, ids ...string) error {
+	ctx := context.Background()
+	collectionName := c.MilvusCollection
+	var partitionNames []string
+	var expr string
+	if len(ids) > 0 {
+		// IDs must be placed in quotes to query string column in Milvus.
+		var quotedIds []string
+		for _, id := range ids {
+			quotedIds = append(quotedIds, fmt.Sprintf(`"%s"`, id))
+		}
+		expr = fmt.Sprintf("id in [%s]", strings.Join(quotedIds, ", "))
+	}
+	// All fields are fetched from the database.
+	outputFields := []string{"*"}
+	// Only up to `count` number of products will be loaded.
+	ops := client.WithLimit(int64(count))
+
+	// Database query is executed.
+	resultSet, err := c.MilvusClient.Query(
+		ctx,
+		collectionName,
+		partitionNames,
+		expr,
+		outputFields,
+		ops,
+	)
+	if err != nil {
+		return fmt.Errorf("error querying milvus: %w", err)
+	}
+
+	// Query result is parsed to a slice of Product pointers.
+	c.Products, err = product.ParseResultSet(c.ColumnNames, resultSet)
+	if err != nil {
+		return fmt.Errorf("error parsing milvus results: %w", err)
+	}
+	return nil
 }
 
 // CreateProducts reads input CSV file and creates product objects based on the input.
@@ -134,7 +184,7 @@ type batch struct {
 	IDs          []string
 	Titles       []string
 	Descriptions []string
-	Prices       []string
+	Prices       []float32
 
 	Images []string
 	Links  []string
@@ -172,7 +222,7 @@ func (c *Catalog) InsertToMilvus(conf config.Init) error {
 	idColumn := entity.NewColumnVarChar(conf.MilvusColumnNames.ID, batch.IDs)
 	titleColumn := entity.NewColumnVarChar(conf.MilvusColumnNames.Title, batch.Titles)
 	descriptionColumn := entity.NewColumnVarChar(conf.MilvusColumnNames.Description, batch.Descriptions)
-	priceColumn := entity.NewColumnVarChar(conf.MilvusColumnNames.Price, batch.Prices)
+	priceColumn := entity.NewColumnFloat(conf.MilvusColumnNames.Price, batch.Prices)
 
 	imageColumn := entity.NewColumnVarChar(conf.MilvusColumnNames.Image, batch.Images)
 	linkColumn := entity.NewColumnVarChar(conf.MilvusColumnNames.Link, batch.Links)
@@ -208,9 +258,9 @@ func (c *Catalog) CreateIndex(conf config.Init) error {
 	// Dimensionality of the embeddings in StyleEmbedding field.
 	dim := len(c.Products[0].StyleEmbedding)
 
-	// Index object with L2 similarity is created.
+	// Index object with cosine similarity is created.
 	idx, err := entity.NewIndexIvfFlat(
-		entity.IP,
+		entity.COSINE,
 		dim,
 	)
 	if err != nil {
@@ -245,7 +295,7 @@ func (c *Catalog) createSchema() *entity.Schema {
 				DataType:   entity.FieldTypeVarChar,
 				PrimaryKey: true,
 				TypeParams: map[string]string{
-					"max_length": "100",
+					"max_length": "10",
 				},
 			},
 			{
@@ -266,11 +316,8 @@ func (c *Catalog) createSchema() *entity.Schema {
 			},
 			{
 				Name:       c.ColumnNames.Price,
-				DataType:   entity.FieldTypeVarChar,
+				DataType:   entity.FieldTypeFloat,
 				PrimaryKey: false,
-				TypeParams: map[string]string{
-					"max_length": "20",
-				},
 			},
 			{
 				Name:       c.ColumnNames.Image,
@@ -315,4 +362,69 @@ func (c *Catalog) createSchema() *entity.Schema {
 	}
 
 	return schema
+}
+
+// Search tolerance/radius. Only search results in this radius from the search vector are valid.
+// TODO: Determine searchMargin dynamically based on some parameters like Catalog's Products similarity.
+const searchMargin = 1
+
+// SearchRelevant searches for products most similar to Catalog's Products.
+//
+// Returns up to `count` number of product.Product pointers and error.
+func (c *Catalog) SearchRelevant(count int) ([]*product.Product, error) {
+	ctx := context.Background()
+	collName := c.MilvusCollection
+	var partitions []string
+	var expr string
+	// All fields are fetched from the database.
+	outputFields := []string{"*"}
+
+	// Temporary slice for holding all product embeddings in Catalog.
+	productVecs := make([][]float32, len(c.Products))
+	for i, p := range c.Products {
+		productVecs[i] = p.StyleEmbedding
+	}
+	// Average product embedding is calculated.
+	// This vector will be used in the search.
+	avgVec := vector.GetAverageVec(productVecs)
+	vectors := []entity.Vector{entity.FloatVector(avgVec)}
+	vectorField := "style_embedding"
+	metricType := entity.COSINE
+	topK := count
+	// Currently we use IVF Flat indexing in Milvus. This might need to change in the future as the database grows.
+	sp, err := entity.NewIndexIvfFlatSearchParam(10)
+	if err != nil {
+		return nil, fmt.Errorf("error creating searchparam: %v", err)
+	}
+	sp.AddRadius(searchMargin)
+
+	searchResults, err := c.MilvusClient.Search(
+		ctx,
+		collName,
+		partitions,
+		expr,
+		outputFields,
+		vectors,
+		vectorField,
+		metricType,
+		topK,
+		sp,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("error vector searching products: %w", err)
+	}
+	if len(searchResults) == 0 {
+		return nil, errors.New("no search results")
+	}
+	// As we only query with 1 vector, we expect to get only 1 set of search results.
+	if len(searchResults) > 1 {
+		return nil, fmt.Errorf("expected 1 set of search results, got %d results", len(searchResults))
+	}
+
+	// Search results are parsed to a slice of
+	results, err := product.ParseResultSet(c.ColumnNames, searchResults[0].Fields)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing search results: %w", err)
+	}
+	return results, nil
 }
