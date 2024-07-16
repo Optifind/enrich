@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/milvus-io/milvus-sdk-go/v2/client"
@@ -28,7 +29,7 @@ func New(conf config.Config) (*Handler, error) {
 		milvusConf,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error creating Milvus client: %s\n", err)
 	}
 
 	// Pointer to handler is returned.

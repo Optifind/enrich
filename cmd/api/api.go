@@ -33,7 +33,7 @@ func main() {
 	router.HandleFunc("GET /products", h.HandleGetProducts)
 
 	// Get PORT from Heroku env
-	port := os.Getenv("PORT")
+	port := ":" + os.Getenv("PORT")
 	fmt.Printf("Server started on port %s\n", port)
 	if err := http.ListenAndServe(port, router); err != nil {
 		log.Fatalln("unexpected error: ", err)
