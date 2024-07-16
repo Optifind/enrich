@@ -1,0 +1,1 @@
+web: sh -c 'cd ./backend/' && sh -c 'mkdir -p bin' && exec 'go build -o bin/api cmd/api/api.go' && exec 'bin/api'
