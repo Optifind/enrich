@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/joho/godotenv"
 
@@ -39,7 +40,8 @@ func main() {
 	router.HandleFunc("GET /product/{id}", h.HandleGetProduct)
 	router.HandleFunc("GET /products", h.HandleGetProducts)
 
-	port := ":3000"
+	// Get PORT from Heroku env
+	port := os.Getenv("PORT")
 	fmt.Printf("Server started on port %s\n", port)
 	if err := http.ListenAndServe(port, router); err != nil {
 		log.Fatalln("unexpected error: ", err)
