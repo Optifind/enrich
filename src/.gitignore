@@ -1,8 +1,0 @@
-# Secrets file
-data/secrets.env
-
-# Data input files
-data/csv_input/
-
-# Backend binaries
-bin/
