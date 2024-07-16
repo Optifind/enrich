@@ -6,8 +6,6 @@ import (
 	"net/http"
 	"os"
 
-	"github.com/joho/godotenv"
-
 	"github.com/lattots/enrich/pkg/config"
 	"github.com/lattots/enrich/pkg/handler"
 )
@@ -19,12 +17,6 @@ func main() {
 	conf, err := config.Load(configFilepath)
 	if err != nil {
 		log.Fatalln("error loading config: ", err)
-	}
-
-	// Secrets are loaded from .env file.
-	err = godotenv.Load(conf.API.SecretsFilepath)
-	if err != nil {
-		log.Fatalln("error loading .env file: ", err)
 	}
 
 	// New handler object is created. This is used to store configurations and Milvus database handle.
