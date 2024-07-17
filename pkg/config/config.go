@@ -8,47 +8,43 @@ import (
 )
 
 // Config is a struct for holding configuration options.
-// Configurations are read from JSON at runtime, so they can be changed without compiling the entire program.
+// Configurations are read from JSON at runtime, so they can be changed without recompiling the entire program.
 type Config struct {
-	Init Init `json:"init"`
-	API  API  `json:"api"`
+	Filepaths Filepaths `json:"filepaths"`
+	DB        Database  `json:"db"`      // All database settings and configurations
+	OpenAI    OpenAI    `json:"open-ai"` // OpenAI settings
 }
 
-// Init is a struct for holding configuration options related to database initialization.
-type Init struct {
+// Filepaths is a struct for holding file paths used in database initialization.
+type Filepaths struct {
 	CatalogFilepath string `json:"catalog-filepath"`
 	PromptsFilepath string `json:"prompts-filepath"`
+}
 
-	MilvusAddress     string      `json:"milvus-address"`
-	MilvusCollection  string      `json:"milvus-collection"`
-	MilvusColumnNames ColumnNames `json:"milvus-column-names"`
+type Database struct {
+	ProductTable string      `json:"product-table"`
+	ColumnNames  ColumnNames `json:"column-names"`
+}
 
-	SecretsFilepath string `json:"secrets-filepath"`
+// ColumnNames is a struct for holding column names used database table.
+type ColumnNames struct {
+	ID               string `json:"id"`
+	Title            string `json:"title"`
+	Description      string `json:"description"`
+	Price            string `json:"price"`
+	Link             string `json:"link"`
+	Image            string `json:"image"`
+	StyleText        string `json:"style-text"`
+	UseCaseText      string `json:"use-case-text"`
+	StyleEmbedding   string `json:"style-embedding"`
+	UseCaseEmbedding string `json:"use-case-embedding"`
+	Attributes       string `json:"attributes"`
+}
 
+// OpenAI is a struct for holding OpenAI settings.
+type OpenAI struct {
 	GPTModel        string `json:"gpt-model"`
 	EmbeddingsModel string `json:"embeddings-model"`
-}
-
-type API struct {
-	MilvusAddress     string      `json:"milvus-address"`
-	MilvusCollection  string      `json:"milvus-collection"`
-	MilvusColumnNames ColumnNames `json:"milvus-column-names"`
-
-	SecretsFilepath string `json:"secrets-filepath"`
-}
-
-// ColumnNames is a struct for holding column names used in database initialization.
-type ColumnNames struct {
-	ID             string `json:"id"`
-	Title          string `json:"title"`
-	Description    string `json:"description"`
-	Price          string `json:"price"`
-	Link           string `json:"link"`
-	Image          string `json:"image"`
-	StyleText      string `json:"style-text"`
-	UseCaseText    string `json:"use-case-text"`
-	StyleEmbedding string `json:"style-embedding"`
-	Attributes     string `json:"attributes"`
 }
 
 // Load loads the configuration object from JSON. Returns Config object and an error.

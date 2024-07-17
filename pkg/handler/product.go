@@ -33,7 +33,7 @@ func (h *Handler) HandleGetProduct(w http.ResponseWriter, r *http.Request) {
 
 	// Product is fetched from database.
 	p, err := product.GetById(
-		h.MilvusClient,
+		h.DB,
 		h.Config,
 		id,
 	)
@@ -78,9 +78,9 @@ func (h *Handler) HandleGetProducts(w http.ResponseWriter, r *http.Request) {
 
 	// Catalog object is created for holding product data.
 	cat := catalog.Catalog{
-		MilvusClient:     h.MilvusClient,
-		MilvusCollection: h.Config.API.MilvusCollection,
-		ColumnNames:      h.Config.Init.MilvusColumnNames,
+		DB:           h.DB,
+		ProductTable: h.Config.DB.ProductTable,
+		ColumnNames:  h.Config.DB.ColumnNames,
 	}
 
 	// Specified IDs are loaded to catalog.
@@ -92,7 +92,7 @@ func (h *Handler) HandleGetProducts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Milvus database is searched for products that best match the Catalogs products.
-	searchResults, err := cat.SearchRelevant(count)
+	searchResults, err := cat.SearchSimilarStyle(count)
 	if err != nil {
 		log.Println(err)
 		http.Error(w, "error getting products", http.StatusInternalServerError)
@@ -118,9 +118,9 @@ func (h *Handler) HandleGetRandomProducts(w http.ResponseWriter, r *http.Request
 
 	// Catalog object is created for holding product data.
 	cat := catalog.Catalog{
-		MilvusClient:     h.MilvusClient,
-		MilvusCollection: h.Config.API.MilvusCollection,
-		ColumnNames:      h.Config.Init.MilvusColumnNames,
+		DB:           h.DB,
+		ProductTable: h.Config.DB.ProductTable,
+		ColumnNames:  h.Config.DB.ColumnNames,
 	}
 
 	// Product info is loaded from Milvus

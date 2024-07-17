@@ -1,40 +1,28 @@
 package handler
 
 import (
-	"context"
+	"database/sql"
 	"fmt"
 	"os"
-
-	"github.com/milvus-io/milvus-sdk-go/v2/client"
 
 	"github.com/lattots/enrich/pkg/config"
 )
 
 type Handler struct {
-	MilvusClient client.Client
-	Config       config.Config
+	DB     *sql.DB
+	Config config.Config
 }
 
 // New creates a new instance of Handler with given configuration file. Returns a pointer to Handler and an error.
 func New(conf config.Config) (*Handler, error) {
-	// Milvus client configuration is created.
-	milvusConf := client.Config{
-		Address: conf.API.MilvusAddress,
-		APIKey:  os.Getenv("MILVUS_TOKEN"),
-	}
-
-	// Milvus client is created.
-	milvusClient, err := client.NewClient(
-		context.Background(),
-		milvusConf,
-	)
+	// Database connection is opened.
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
-		return nil, fmt.Errorf("error creating Milvus client: %s\n", err)
+		return nil, fmt.Errorf("error opening database connection: %w", err)
 	}
-
-	// Pointer to handler is returned.
-	return &Handler{
-		MilvusClient: milvusClient,
-		Config:       conf,
-	}, nil
+	err = db.Ping()
+	if err != nil {
+		return nil, fmt.Errorf("error pinging database connection: %w", err)
+	}
+	return &Handler{DB: db, Config: conf}, nil
 }

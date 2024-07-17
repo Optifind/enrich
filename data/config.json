@@ -1,11 +1,11 @@
 {
-  "init": {
+  "filepaths": {
     "catalog-filepath": "./data/csv_input/example.csv",
-    "prompts-filepath": "./data/prompts.json",
-
-    "milvus-address": "https://in03-3298f576692fd72.api.gcp-us-west1.zillizcloud.com",
-    "milvus-collection": "fds_style",
-    "milvus-column-names": {
+    "prompts-filepath": "./data/prompts.json"
+  },
+  "db": {
+    "product-table": "fds_style",
+    "column-names": {
       "id": "id",
       "title": "title",
       "description": "description",
@@ -15,30 +15,12 @@
       "style-text": "style_text",
       "use-case-text": "use_case_text",
       "style-embedding": "style_embedding",
+      "use-case-embedding": "use_case_embedding",
       "attributes": "attributes"
-    },
-
-    "secrets-filepath": "./data/secrets.env",
-
+    }
+  },
+  "open-ai": {
     "gpt-model": "gpt-4o",
     "embeddings-model": "text-embedding-3-large"
-  },
-  "api": {
-    "milvus-address": "https://in03-3298f576692fd72.api.gcp-us-west1.zillizcloud.com",
-    "milvus-collection": "fds_style",
-    "milvus-column-names": {
-      "id": "id",
-      "title": "title",
-      "description": "description",
-      "price": "price",
-      "link": "link",
-      "image": "image",
-      "style-text": "style_text",
-      "use-case-text": "use_case_text",
-      "style-embedding": "style_embedding",
-      "attributes": "attributes"
-    },
-
-    "secrets-filepath": "./data/secrets.env"
   }
 }
