@@ -1,118 +1,62 @@
 package product
 
 import (
-	"errors"
+	"database/sql"
 	"fmt"
-	"log"
 	"regexp"
 	"strconv"
-
-	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
-
-	"github.com/lattots/enrich/pkg/config"
 )
 
-// ParseResultSet parses Milvus's client.ResultSet to a slice of pointers to products.
-// Returns a slice of pointers and error.
-func ParseResultSet(columnNames config.ColumnNames, res client.ResultSet) ([]*Product, error) {
-	// Temporary slices for holding result information.
-	ids := make([]string, 0)
-	titles := make([]string, 0)
-	descs := make([]string, 0)
-	prices := make([]float32, 0)
-	links := make([]string, 0)
-	images := make([]string, 0)
-	embeddings := make([][]float32, 0)
-	styleTexts := make([]string, 0)
-	useCaseTexts := make([]string, 0)
-
-	// Data fields from all columns are added to result information slices.
-	for _, col := range res {
-		var err error
-		switch col.Name() {
-		case columnNames.ID:
-			ids, err = addStrings(ids, col)
-		case columnNames.Title:
-			titles, err = addStrings(titles, col)
-		case columnNames.Description:
-			descs, err = addStrings(descs, col)
-		case columnNames.Price:
-			prices, err = addFloat32s(prices, col)
-		case columnNames.Link:
-			links, err = addStrings(links, col)
-		case columnNames.Image:
-			images, err = addStrings(images, col)
-		case columnNames.StyleEmbedding:
-			embeddings, err = addEmbeddings(embeddings, col)
-		case columnNames.StyleText:
-			styleTexts, err = addStrings(styleTexts, col)
-		case columnNames.UseCaseText:
-			useCaseTexts, err = addStrings(useCaseTexts, col)
-		default:
-			log.Printf("unknown column name: %s", col.Name())
-		}
-		if err != nil {
-			return nil, err
-		}
-	}
-
+// FromSQLRows converts SQL query results to a slice of Product
+func FromSQLRows(rows *sql.Rows) ([]*Product, error) {
 	var products []*Product
-	// Product objects are created from temporary product information slices.
-	for i := range titles {
-		p := &Product{
-			ID:             ids[i],
-			Title:          titles[i],
-			Description:    descs[i],
-			Price:          prices[i],
-			Link:           links[i],
-			Image:          images[i],
-			StyleEmbedding: embeddings[i],
-			StyleText:      styleTexts[i],
-			UseCaseText:    useCaseTexts[i],
+	for rows.Next() {
+		p := &Product{}
+		err := scanProduct(rows, p)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing product from rows: %s", err)
 		}
+
 		products = append(products, p)
 	}
 
-	// Created slice of pointers to product objects is returned.
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during row iteration: %s", err)
+	}
+
 	return products, nil
 }
 
-// addStrings adds all data fields from column to target slice. Returns the modified slice and error.
-func addStrings(target []string, column entity.Column) ([]string, error) {
-	// Varchar / string column is retrieved from column.
-	strCol, ok := column.(*entity.ColumnVarChar)
-	// If column doesn't contain varchar / string column, function errors.
-	if !ok {
-		return nil, errors.New("column is not var char")
+// FromSQLRow a single SQL query result to a Product
+func FromSQLRow(row *sql.Row) (*Product, error) {
+	var p *Product
+	err := scanProduct(row, p)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing product from row: %s", err)
 	}
-	// All elements from data column are added to target slice.
-	target = append(target, strCol.Data()...)
-	return target, nil
+	return p, nil
 }
 
-// addFloat32s adds all data fields from column to target slice. Returns the modified slice and error.
-func addFloat32s(target []float32, column entity.Column) ([]float32, error) {
-	// Float column is retrieved from column.
-	floatCol, ok := column.(*entity.ColumnFloat)
-	if !ok {
-		return nil, errors.New("column is not float")
+// scanProduct is a helper function for scanning SQL query results to Product
+func scanProduct(scanner interface {
+	Scan(dest ...interface{}) error
+}, p *Product) error {
+	err := scanner.Scan(
+		&p.ID,
+		&p.Title,
+		&p.Description,
+		&p.Price,
+		&p.Link,
+		&p.Image,
+		&p.StyleText,
+		&p.UseCaseText,
+		&p.StyleEmbedding,
+		&p.UseCaseEmbedding,
+	)
+	if err != nil {
+		return fmt.Errorf("error scanning product: %w", err)
 	}
-	// All elements from data column are added to target slice.
-	target = append(target, floatCol.Data()...)
-	return target, nil
-}
-
-func addEmbeddings(target [][]float32, column entity.Column) ([][]float32, error) {
-	// Vector column is retrieved from column.
-	strCol, ok := column.(*entity.ColumnFloatVector)
-	// If column doesn't contain varchar / string column, function errors.
-	if !ok {
-		return nil, errors.New("column is not float32 vector")
-	}
-	// All elements from data column are added to target slice.
-	target = append(target, strCol.Data()...)
-	return target, nil
+	return nil
 }
 
 func extractPrice(s string) (float32, error) {

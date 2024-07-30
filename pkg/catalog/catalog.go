@@ -1,7 +1,7 @@
 package catalog
 
 import (
-	"context"
+	"database/sql"
 	"encoding/csv"
 	"errors"
 	"fmt"
@@ -11,8 +11,7 @@ import (
 	"strings"
 
 	openaisdk "github.com/lattots/openai-sdk"
-	"github.com/milvus-io/milvus-sdk-go/v2/client"
-	"github.com/milvus-io/milvus-sdk-go/v2/entity"
+	_ "github.com/lib/pq"
 
 	"github.com/lattots/enrich/pkg/config"
 	"github.com/lattots/enrich/pkg/product"
@@ -22,42 +21,33 @@ import (
 
 // Catalog is a struct that represents a group of products.
 type Catalog struct {
-	InputFilepath    string             // Path to the input CSV file
-	Products         []*product.Product // Slice of pointers to products that belong to the catalog
-	MilvusCollection string             // Name of the Milvus collection
-	MilvusClient     client.Client      // Milvus database client
-	ColumnNames      config.ColumnNames // Milvus collection's column names
+	InputFilepath string             // Path to the input CSV file
+	Products      []*product.Product // Slice of pointers to products that belong to the catalog
+	DB            *sql.DB            // Database handle for product database
+	ProductTable  string             // Name of the product table
+	ColumnNames   config.ColumnNames // Milvus collection's column names
 }
 
 // New creates a new Catalog object according to configuration options.
 // Returns a pointer to Catalog object and an error.
-func New(conf config.Init) (*Catalog, error) {
-	// Milvus client configuration is specified.
-	milvusConf := client.Config{
-		Address: conf.MilvusAddress,
-		APIKey:  os.Getenv("MILVUS_TOKEN"),
-	}
-
-	// Milvus client is created.
-	milvusClient, err := client.NewClient(
-		context.Background(),
-		milvusConf,
-	)
+func New(conf config.Config) (*Catalog, error) {
+	// Database connection is opened to Postgresql database
+	db, err := sql.Open("postgres", os.Getenv("DATABASE_URL"))
 	if err != nil {
 		return nil, err
 	}
 
 	catalog := &Catalog{
-		InputFilepath:    conf.CatalogFilepath,
-		MilvusClient:     milvusClient,
-		MilvusCollection: conf.MilvusCollection,
-		ColumnNames:      conf.MilvusColumnNames,
+		InputFilepath: conf.Filepaths.CatalogFilepath,
+		DB:            db,
+		ProductTable:  conf.DB.ProductTable,
+		ColumnNames:   conf.DB.ColumnNames,
 	}
 
 	return catalog, nil
 }
 
-// Load fetches product's in Catalog's Milvus collection to memory.
+// Load fetches product's in Catalog's product database to memory.
 //
 // `count` (required) determines the maximum amount of products that will be loaded.
 //
@@ -65,41 +55,56 @@ func New(conf config.Init) (*Catalog, error) {
 //
 // Returns an error.
 func (c *Catalog) Load(count int, ids ...string) error {
-	ctx := context.Background()
-	collectionName := c.MilvusCollection
-	var partitionNames []string
-	var expr string
+	if count <= 0 {
+		return errors.New("count must be greater than 0")
+	}
+	var queryBuilder strings.Builder
+	queryBuilder.WriteString("SELECT ")
+	queryBuilder.WriteString(strings.Join([]string{
+		c.ColumnNames.ID,
+		c.ColumnNames.Title,
+		c.ColumnNames.Description,
+		c.ColumnNames.Price,
+		c.ColumnNames.Link,
+		c.ColumnNames.Image,
+		c.ColumnNames.StyleText,
+		c.ColumnNames.UseCaseText,
+		c.ColumnNames.StyleEmbedding,
+		c.ColumnNames.UseCaseEmbedding,
+	}, ", "))
+	queryBuilder.WriteString(" FROM ")
+	queryBuilder.WriteString(c.ProductTable)
+
+	var args []interface{}
 	if len(ids) > 0 {
-		// IDs must be placed in quotes to query string column in Milvus.
-		var quotedIds []string
-		for _, id := range ids {
-			quotedIds = append(quotedIds, fmt.Sprintf(`"%s"`, id))
+		placeholders := make([]string, len(ids))
+		for i, id := range ids {
+			placeholders[i] = "?"
+			args = append(args, id)
 		}
-		expr = fmt.Sprintf("id in [%s]", strings.Join(quotedIds, ", "))
-	}
-	// All fields are fetched from the database.
-	outputFields := []string{"*"}
-	// Only up to `count` number of products will be loaded.
-	ops := client.WithLimit(int64(count))
-
-	// Database query is executed.
-	resultSet, err := c.MilvusClient.Query(
-		ctx,
-		collectionName,
-		partitionNames,
-		expr,
-		outputFields,
-		ops,
-	)
-	if err != nil {
-		return fmt.Errorf("error querying milvus: %w", err)
+		queryBuilder.WriteString(" WHERE id IN (")
+		queryBuilder.WriteString(strings.Join(placeholders, ", "))
+		queryBuilder.WriteString(")")
 	}
 
-	// Query result is parsed to a slice of Product pointers.
-	c.Products, err = product.ParseResultSet(c.ColumnNames, resultSet)
+	queryBuilder.WriteString(" LIMIT ?")
+	args = append(args, count)
+
+	query := queryBuilder.String()
+
+	rows, err := c.DB.Query(query, args...)
 	if err != nil {
-		return fmt.Errorf("error parsing milvus results: %w", err)
+		return fmt.Errorf("error querying products: %w", err)
 	}
+	defer rows.Close()
+
+	products, err := product.FromSQLRows(rows)
+	if err != nil {
+		return fmt.Errorf("error parsing product query results: %w", err)
+	}
+
+	c.Products = products
+
 	return nil
 }
 
@@ -151,7 +156,7 @@ func (c *Catalog) CreateProducts() error {
 // ProcessProducts processes all products. After this all products will have style and use case descriptions and embeddings for some of their fields.
 // See Product.Process() for additional information.
 // Returns an error.
-func (c *Catalog) ProcessProducts(conf config.Init, prompts prompts.Prompts) error {
+func (c *Catalog) ProcessProducts(conf config.OpenAI, prompts prompts.Prompts) error {
 	fmt.Println("Processing products...")
 	openAIClient := openaisdk.APIClient{APIKey: os.Getenv("OPENAI_TOKEN")}
 	for _, p := range c.Products {
@@ -163,222 +168,153 @@ func (c *Catalog) ProcessProducts(conf config.Init, prompts prompts.Prompts) err
 	return nil
 }
 
-// InitCollection initializes a Milvus database collection with the catalogs' information.
+// InitDatabase initializes a new database collection with the catalogs' information.
 // Returns an error.
-func (c *Catalog) InitCollection() error {
-	fmt.Println("Initializing Milvus collection...")
-	// Schema for collection is created. This decides what columns are created.
-	schema := c.createSchema()
+func (c *Catalog) InitDatabase() error {
+	fmt.Println("Initializing database collection...")
 
-	// Here the collection is created to the database with the specified schema.
-	err := c.MilvusClient.CreateCollection(context.Background(), schema, 2)
+	// Database table for products is created.
+	err := c.CreateTable()
 	if err != nil {
-		return err
+		return fmt.Errorf("error creating database table: %w", err)
+	}
+
+	// Products are inserted to database.
+	err = c.InsertToDB()
+	if err != nil {
+		return fmt.Errorf("error inserting products: %w", err)
 	}
 
 	return nil
 }
 
-// Struct for holding Milvus insert batch.
-type batch struct {
-	IDs          []string
-	Titles       []string
-	Descriptions []string
-	Prices       []float32
-
-	Images []string
-	Links  []string
-
-	StyleTexts   []string
-	UseCaseTexts []string
-
-	StyleVectors [][]float32
-}
-
-// InsertToMilvus inserts all products of the catalog to Milvus collection.
-// Returns an error.
-func (c *Catalog) InsertToMilvus(conf config.Init) error {
-	fmt.Println("Inserting product catalog to Milvus collection...")
-	// This is a batch of information that is inserted to database.
-	var batch batch
-
-	// All products in catalog are added to the batch.
-	for _, p := range c.Products {
-		batch.IDs = append(batch.IDs, p.ID)
-		batch.Titles = append(batch.Titles, p.Title)
-		batch.Descriptions = append(batch.Descriptions, p.Description)
-		batch.Prices = append(batch.Prices, p.Price)
-
-		batch.Images = append(batch.Images, p.Image)
-		batch.Links = append(batch.Links, p.Link)
-
-		batch.StyleTexts = append(batch.StyleTexts, p.StyleText)
-		batch.UseCaseTexts = append(batch.UseCaseTexts, p.UseCaseText)
-
-		batch.StyleVectors = append(batch.StyleVectors, p.StyleEmbedding)
-	}
-
-	// Columns are created for all attributes.
-	idColumn := entity.NewColumnVarChar(conf.MilvusColumnNames.ID, batch.IDs)
-	titleColumn := entity.NewColumnVarChar(conf.MilvusColumnNames.Title, batch.Titles)
-	descriptionColumn := entity.NewColumnVarChar(conf.MilvusColumnNames.Description, batch.Descriptions)
-	priceColumn := entity.NewColumnFloat(conf.MilvusColumnNames.Price, batch.Prices)
-
-	imageColumn := entity.NewColumnVarChar(conf.MilvusColumnNames.Image, batch.Images)
-	linkColumn := entity.NewColumnVarChar(conf.MilvusColumnNames.Link, batch.Links)
-
-	styleTextColumn := entity.NewColumnVarChar(conf.MilvusColumnNames.StyleText, batch.StyleTexts)
-	useCaseColumn := entity.NewColumnVarChar(conf.MilvusColumnNames.UseCaseText, batch.UseCaseTexts)
-
-	vectorColumn := entity.NewColumnFloatVector(conf.MilvusColumnNames.StyleEmbedding, len(batch.StyleVectors[0]), batch.StyleVectors)
-
-	// Columns are inserted to database.
-	_, err := c.MilvusClient.Insert(
-		context.Background(),
-		conf.MilvusCollection,
-		"",
-		idColumn,
-		titleColumn,
-		descriptionColumn,
-		priceColumn,
-
-		imageColumn,
-		linkColumn,
-
-		styleTextColumn,
-		useCaseColumn,
-
-		vectorColumn,
+func (c *Catalog) CreateTable() error {
+	fmt.Println("Creating table...")
+	query := fmt.Sprintf(`CREATE TABLE %s IF NOT EXISTS (
+		%s VARCHAR(15) PRIMARY KEY NOT NULL,
+		%s VARCHAR(255),
+		%s TEXT,
+		%s NUMERIC(10, 2),
+    	%s VARCHAR(255),
+    	%s VARCHAR(255),
+		%s TEXT,
+		%s TEXT,
+		%s VECTOR(3072),
+		%s VECTOR(3072),);`,
+		c.ProductTable,
+		c.ColumnNames.ID,
+		c.ColumnNames.Title,
+		c.ColumnNames.Description,
+		c.ColumnNames.Price,
+		c.ColumnNames.Link,
+		c.ColumnNames.Image,
+		c.ColumnNames.StyleText,
+		c.ColumnNames.UseCaseText,
+		c.ColumnNames.StyleEmbedding,
+		c.ColumnNames.UseCaseEmbedding,
 	)
-	return err
-}
 
-// CreateIndex creates index for style embedding column. Returns an error.
-func (c *Catalog) CreateIndex(conf config.Init) error {
-	// Dimensionality of the embeddings in StyleEmbedding field.
-	dim := len(c.Products[0].StyleEmbedding)
-
-	// Index object with cosine similarity is created.
-	idx, err := entity.NewIndexIvfFlat(
-		entity.COSINE,
-		dim,
-	)
+	_, err := c.DB.Exec(query)
 	if err != nil {
-		return err
+		return fmt.Errorf("error creating table: %w", err)
 	}
+	return nil
+}
 
-	// Index for collection is created.
-	err = c.MilvusClient.CreateIndex(
-		context.Background(),
-		conf.MilvusCollection,
-		conf.MilvusColumnNames.StyleEmbedding,
-		idx,
-		false,
+// InsertToDB inserts all products of the catalog into databases product table.
+// Returns an error.
+func (c *Catalog) InsertToDB() error {
+	prefixes := make([]string, len(c.Products))
+	values := make([]interface{}, len(c.Products)*10)
+	for _, p := range c.Products {
+		prefixes = append(prefixes, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+		values = append(
+			values,
+			p.ID,
+			p.Title,
+			p.Description,
+			p.Price,
+			p.Link,
+			p.Image,
+			p.StyleText,
+			p.UseCaseText,
+			p.StyleEmbedding,
+			p.UseCaseEmbedding,
+		)
+	}
+	stmt := fmt.Sprintf(
+		"INSERT INTO %s (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) VALUES %s",
+		c.ProductTable,
+		c.ColumnNames.ID,
+		c.ColumnNames.Title,
+		c.ColumnNames.Description,
+		c.ColumnNames.Price,
+		c.ColumnNames.Link,
+		c.ColumnNames.Image,
+		c.ColumnNames.StyleText,
+		c.ColumnNames.UseCaseText,
+		c.ColumnNames.StyleEmbedding,
+		c.ColumnNames.UseCaseEmbedding,
+		strings.Join(prefixes, ", "),
 	)
-	return err
+
+	_, err := c.DB.Exec(stmt, values...)
+	if err != nil {
+		return fmt.Errorf("error inserting products into table: %w", err)
+	}
+	return nil
 }
 
-// createSchema creates a schema object for a new Milvus collection. Returns the schema created.
-func (c *Catalog) createSchema() *entity.Schema {
-	var dim int
-	if e := c.Products[0].StyleEmbedding; e != nil {
-		dim = len(e) // If embeddings already exist, schema dimensionality is matched to embeddings
-	} else {
-		dim = 1536 // This is the default dimension count of OpenAI's "text-embedding-3-small" model
+// UpdateIndex creates index for style embeddings and use case embeddings. Returns an error.
+func (c *Catalog) UpdateIndex() error {
+	// Old indices are dropped if they already exist.
+	dropStyleIndex := fmt.Sprintf(
+		"DROP INDEX IF EXISTS %s_%s_idx",
+		c.ProductTable,
+		c.ColumnNames.StyleEmbedding,
+	)
+	_, err := c.DB.Exec(dropStyleIndex)
+	if err != nil {
+		return fmt.Errorf("error dropping index: %w", err)
+	}
+	dropUseCaseIndex := fmt.Sprintf(
+		"DROP INDEX IF EXISTS %s_%s_idx",
+		c.ProductTable,
+		c.ColumnNames.UseCaseEmbedding,
+	)
+	_, err = c.DB.Exec(dropUseCaseIndex)
+	if err != nil {
+		return fmt.Errorf("error dropping index: %w", err)
 	}
 
-	schema := &entity.Schema{
-		CollectionName: c.MilvusCollection,
-		Fields: []*entity.Field{
-			{
-				Name:       c.ColumnNames.ID,
-				DataType:   entity.FieldTypeVarChar,
-				PrimaryKey: true,
-				TypeParams: map[string]string{
-					"max_length": "10",
-				},
-			},
-			{
-				Name:       c.ColumnNames.Title,
-				DataType:   entity.FieldTypeVarChar,
-				PrimaryKey: false,
-				TypeParams: map[string]string{
-					"max_length": "500",
-				},
-			},
-			{
-				Name:       c.ColumnNames.Description,
-				DataType:   entity.FieldTypeVarChar,
-				PrimaryKey: false,
-				TypeParams: map[string]string{
-					"max_length": "5000",
-				},
-			},
-			{
-				Name:       c.ColumnNames.Price,
-				DataType:   entity.FieldTypeFloat,
-				PrimaryKey: false,
-			},
-			{
-				Name:       c.ColumnNames.Image,
-				DataType:   entity.FieldTypeVarChar,
-				PrimaryKey: false,
-				TypeParams: map[string]string{
-					"max_length": "1000",
-				},
-			},
-			{
-				Name:       c.ColumnNames.Link,
-				DataType:   entity.FieldTypeVarChar,
-				PrimaryKey: false,
-				TypeParams: map[string]string{
-					"max_length": "1000",
-				},
-			},
-			{
-				Name:       c.ColumnNames.StyleText,
-				DataType:   entity.FieldTypeVarChar,
-				PrimaryKey: false,
-				TypeParams: map[string]string{
-					"max_length": "5000",
-				},
-			},
-			{
-				Name:       c.ColumnNames.UseCaseText,
-				DataType:   entity.FieldTypeVarChar,
-				PrimaryKey: false,
-				TypeParams: map[string]string{
-					"max_length": "5000",
-				},
-			},
-			{
-				Name:     c.ColumnNames.StyleEmbedding,
-				DataType: entity.FieldTypeFloatVector,
-				TypeParams: map[string]string{
-					"dim": fmt.Sprint(dim),
-				},
-			},
-		},
+	// Statements for creating new indices
+	// TODO: Currently we use default values for m and ef_construction in index creation.
+	//  It might be smart to try out other parameters
+	createStyleIndex := fmt.Sprintf(
+		"CREATE INDEX ON %s USING hnsw (%s vector_cosine_ops)",
+		c.ProductTable,
+		c.ColumnNames.StyleEmbedding,
+	)
+	_, err = c.DB.Exec(createStyleIndex)
+	if err != nil {
+		return fmt.Errorf("error creating index: %w", err)
 	}
-
-	return schema
+	createUseCaseIndex := fmt.Sprintf(
+		"CREATE INDEX ON %s USING hnsw (%s vector_cosine_ops)",
+		c.ProductTable,
+		c.ColumnNames.UseCaseEmbedding,
+	)
+	_, err = c.DB.Exec(createUseCaseIndex)
+	if err != nil {
+		return fmt.Errorf("error creating index: %w", err)
+	}
+	return nil
 }
 
-// Search tolerance/radius. Only search results in this radius from the search vector are valid.
-// TODO: Determine searchMargin dynamically based on some parameters like Catalog's Products similarity.
-const searchMargin = 1
-
-// SearchRelevant searches for products most similar to Catalog's Products.
+// SearchSimilarStyle searches for products most similar to Catalog's Products in design style.
 //
 // Returns up to `count` number of product.Product pointers and error.
-func (c *Catalog) SearchRelevant(count int) ([]*product.Product, error) {
-	ctx := context.Background()
-	collName := c.MilvusCollection
-	var partitions []string
-	var expr string
-	// All fields are fetched from the database.
-	outputFields := []string{"*"}
-
+func (c *Catalog) SearchSimilarStyle(count int) ([]*product.Product, error) {
 	// Temporary slice for holding all product embeddings in Catalog.
 	productVecs := make([][]float32, len(c.Products))
 	for i, p := range c.Products {
@@ -387,44 +323,66 @@ func (c *Catalog) SearchRelevant(count int) ([]*product.Product, error) {
 	// Average product embedding is calculated.
 	// This vector will be used in the search.
 	avgVec := vector.GetAverageVec(productVecs)
-	vectors := []entity.Vector{entity.FloatVector(avgVec)}
-	vectorField := "style_embedding"
-	metricType := entity.COSINE
-	topK := count
-	// Currently we use IVF Flat indexing in Milvus. This might need to change in the future as the database grows.
-	sp, err := entity.NewIndexIvfFlatSearchParam(10)
-	if err != nil {
-		return nil, fmt.Errorf("error creating searchparam: %v", err)
-	}
-	sp.AddRadius(searchMargin)
 
-	searchResults, err := c.MilvusClient.Search(
-		ctx,
-		collName,
-		partitions,
-		expr,
-		outputFields,
-		vectors,
-		vectorField,
-		metricType,
-		topK,
-		sp,
-	)
+	results, err := c.vectorSearch(avgVec, c.ColumnNames.StyleEmbedding, count)
 	if err != nil {
-		return nil, fmt.Errorf("error vector searching products: %w", err)
-	}
-	if len(searchResults) == 0 {
-		return nil, errors.New("no search results")
-	}
-	// As we only query with 1 vector, we expect to get only 1 set of search results.
-	if len(searchResults) > 1 {
-		return nil, fmt.Errorf("expected 1 set of search results, got %d results", len(searchResults))
+		return nil, fmt.Errorf("error vector searching db: %w", err)
 	}
 
-	// Search results are parsed to a slice of
-	results, err := product.ParseResultSet(c.ColumnNames, searchResults[0].Fields)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing search results: %w", err)
-	}
 	return results, nil
+}
+
+// SearchSimilarUseCase searches for products most similar to Catalog's Products in design style.
+//
+// Returns up to `count` number of product.Product pointers and error.
+func (c *Catalog) SearchSimilarUseCase(count int) ([]*product.Product, error) {
+	// Temporary slice for holding all product embeddings in Catalog.
+	productVecs := make([][]float32, len(c.Products))
+	for i, p := range c.Products {
+		productVecs[i] = p.UseCaseEmbedding
+	}
+	// Average product embedding is calculated.
+	// This vector will be used in the search.
+	avgVec := vector.GetAverageVec(productVecs)
+
+	results, err := c.vectorSearch(avgVec, c.ColumnNames.UseCaseEmbedding, count)
+	if err != nil {
+		return nil, fmt.Errorf("error vector searching db: %w", err)
+	}
+
+	return results, nil
+}
+
+// vectorSearch searches the database with the given vector on the given column. It returns up to count number of products.
+func (c *Catalog) vectorSearch(vec []float32, vecColumn string, count int) ([]*product.Product, error) {
+	query := fmt.Sprintf(
+		"SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s FROM %s ORDER BY %s <=> %v LIMIT %d",
+		c.ColumnNames.ID,
+		c.ColumnNames.Title,
+		c.ColumnNames.Description,
+		c.ColumnNames.Price,
+		c.ColumnNames.Link,
+		c.ColumnNames.Image,
+		c.ColumnNames.StyleText,
+		c.ColumnNames.UseCaseText,
+		c.ColumnNames.StyleEmbedding,
+		c.ColumnNames.UseCaseEmbedding,
+		c.ProductTable,
+		vecColumn,
+		vec,
+		count,
+	)
+
+	rows, err := c.DB.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("error searching products: %w", err)
+	}
+	defer rows.Close()
+
+	products, err := product.FromSQLRows(rows)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing query results: %w", err)
+	}
+
+	return products, nil
 }
