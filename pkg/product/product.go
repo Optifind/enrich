@@ -126,16 +126,22 @@ func (p *Product) Process(client openaisdk.APIClient, GPTModel, embeddingsModel 
 // Resulting description is saved to product's StyleText field. Returns an error.
 func (p *Product) CreateStyleText(client openaisdk.APIClient, GPTModel string, prompt []openaisdk.Message) error {
 	// Product information is concatenated to a single string.
-	productInfo := fmt.Sprintf("Title: %s\nDescription: %s\nImage: %s", p.Title, p.Description, p.Image)
+	productInfo := fmt.Sprintf("Title: %s\nDescription: %s", p.Title, p.Description)
 
 	// Chat message object is created with the product's information as the content.
-	message := openaisdk.Message{
-		Role:    "user",
-		Content: productInfo,
+	productMsg := openaisdk.Message{
+		Role: "user",
+		Content: []openaisdk.Content{
+			openaisdk.NewTextContent(productInfo),
+			openaisdk.NewImageContent(p.Image),
+		},
 	}
 
+	// This prompt includes the pre-defined "system" prompt and the product specific information.
+	fullPrompt := append(prompt, productMsg)
+
 	// Chat completion is created with the prompt messages and product information.
-	resp, err := client.CreateChatCompletion(GPTModel, append(prompt, message))
+	resp, err := client.CreateChatCompletion(GPTModel, fullPrompt, 3000)
 	if err != nil {
 		return err
 	}
@@ -149,16 +155,22 @@ func (p *Product) CreateStyleText(client openaisdk.APIClient, GPTModel string, p
 // Resulting description is saved to product's UseCaseText field. Returns an error.
 func (p *Product) CreateUseCaseText(client openaisdk.APIClient, GPTModel string, prompt []openaisdk.Message) error {
 	// Product information is concatenated to a single string.
-	productInfo := fmt.Sprintf("Title: %s\nDescription: %s\nImage: %s", p.Title, p.Description, p.Image)
+	productInfo := fmt.Sprintf("Title: %s\nDescription: %s", p.Title, p.Description)
 
 	// Chat message object is created with the product's information as the content.
-	message := openaisdk.Message{
-		Role:    "user",
-		Content: productInfo,
+	productMsg := openaisdk.Message{
+		Role: "user",
+		Content: []openaisdk.Content{
+			openaisdk.NewTextContent(productInfo),
+			openaisdk.NewImageContent(p.Image),
+		},
 	}
 
+	// This prompt includes the pre-defined "system" prompt and the product specific information.
+	fullPrompt := append(prompt, productMsg)
+
 	// Chat completion is created with the prompt messages and product information.
-	resp, err := client.CreateChatCompletion(GPTModel, append(prompt, message))
+	resp, err := client.CreateChatCompletion(GPTModel, fullPrompt, 3000)
 	if err != nil {
 		return err
 	}

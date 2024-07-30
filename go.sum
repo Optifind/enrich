@@ -149,6 +149,7 @@ github.com/labstack/echo/v4 v4.5.0/go.mod h1:czIriw4a0C1dFun+ObrXp7ok03xON0N1awS
 github.com/labstack/gommon v0.3.0/go.mod h1:MULnywXg0yavhxWKc+lOruYdAhDwPK9wf0OL7NoOu+k=
 github.com/lattots/openai-sdk v1.1.0 h1:eH7MMitaHOAxgRSgFfwsKhsxOv5pNMobuVX1kfxQvzc=
 github.com/lattots/openai-sdk v1.1.0/go.mod h1:L0OuRjDZq8x9hJYQTWjgU0tNE938WClBvaihyHCTOLg=
+github.com/lattots/openai-sdk v1.2.0/go.mod h1:L0OuRjDZq8x9hJYQTWjgU0tNE938WClBvaihyHCTOLg=
 github.com/magiconair/properties v1.8.0/go.mod h1:PppfXfuXeibc/6YijjN8zIbojt8czPbwD3XqdrwzmxQ=
 github.com/mattn/go-colorable v0.1.2/go.mod h1:U0ppj6V5qS13XJ6of8GYAs25YV2eR4EVcfRqFIhoBtE=
 github.com/mattn/go-colorable v0.1.8/go.mod h1:u6P/XSegPjTcexA+o6vUJrdnUu04hMope9wVRipJSqc=
