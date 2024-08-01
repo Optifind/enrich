@@ -1,10 +1,16 @@
 #!/bin/bash
 
-# Check if DATABASE_URL is set
-if [ -z "$DATABASE_URL" ]; then
-  echo "Error: DATABASE_URL is not set."
-  exit 1
-fi
+username=$(echo $DATABASE_URL | sed -n ':\/\/([^:]+):')
+password=$(echo $DATABASE_URL | sed -n ':([^:]+)@')
+host=$(echo $DATABASE_URL | sed -n '@([^:]+)')
+port=$(echo $DATABASE_URL | sed -n ':([0-9]+)\/')
+dbname=$(echo $DATABASE_URL | sed -n '\/([^\/]+)$')
 
-# Load database from dump file
-psql $DATABASE_URL -f data/db_dumps/latest.sql
+# Password is exported to environment variable so pg_restore can use it
+export PGPASSWORD=$password
+
+# Database is restored with dump file
+pg_restore --verbose --clean --no-acl --no-owner -h $host -p $port -U $username -d $dbname data/db_dumps/latest.dump
+
+# PGPASSWORD is removed from environment variables
+unset PGPASSWORD

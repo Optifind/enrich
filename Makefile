@@ -12,8 +12,8 @@ all: init api test
 # Initialization target
 init: $(BINARY_DIR)/init_db
 	$(BINARY_DIR)/init_db
-	rm data/db_dumps/latest.sql
-	sudo -u postgres pg_dump enrich_test > data/db_dumps/latest.sql
+	rm data/db_dumps/latest.dump
+	pg_dump -Fc --no-acl --no-owner -h localhost -U enrich -d enrich_test -f data/db_dumps/latest.dump
 
 # API target
 api: $(BINARY_DIR)/api
