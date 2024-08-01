@@ -161,9 +161,9 @@ func (c *Catalog) CreateProducts() error {
 // Returns an error.
 func (c *Catalog) ProcessProducts(conf config.OpenAI, prompts prompts.Prompts) error {
 	fmt.Println("Processing products...")
-	openAIClient := openaisdk.APIClient{APIKey: os.Getenv("OPENAI_TOKEN")}
+	openAIClient := openaisdk.NewAPIClient(os.Getenv("OPENAI_TOKEN"))
 	for _, p := range c.Products {
-		err := p.Process(openAIClient, conf.GPTModel, conf.EmbeddingsModel, prompts)
+		err := p.Process(*openAIClient, conf.GPTModel, conf.EmbeddingsModel, prompts)
 		if err != nil {
 			return err
 		}
