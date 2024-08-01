@@ -1,7 +1,8 @@
 {
   "filepaths": {
     "catalog-filepath": "./data/csv_input/example.csv",
-    "prompts-filepath": "./data/prompts.json"
+    "prompts-filepath": "./data/prompts.json",
+    "secrets-filepath": "./data/secrets.env"
   },
   "db": {
     "product-table": "fds_style",
@@ -17,10 +18,11 @@
       "style-embedding": "style_embedding",
       "use-case-embedding": "use_case_embedding",
       "attributes": "attributes"
-    }
+    },
+    "vector-dimensions": 1536
   },
   "open-ai": {
     "gpt-model": "gpt-4o",
-    "embeddings-model": "text-embedding-3-large"
+    "embeddings-model": "text-embedding-3-small"
   }
 }

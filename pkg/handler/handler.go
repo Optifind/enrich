@@ -24,5 +24,6 @@ func New(conf config.Config) (*Handler, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error pinging database connection: %w", err)
 	}
+
 	return &Handler{DB: db, Config: conf}, nil
 }

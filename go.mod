@@ -6,4 +6,5 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lattots/openai-sdk v1.1.0
 	github.com/lib/pq v1.10.9
+	github.com/pgvector/pgvector-go v0.2.1
 )

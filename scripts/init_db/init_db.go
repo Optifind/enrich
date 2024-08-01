@@ -2,6 +2,9 @@ package main
 
 import (
 	"log"
+	"os"
+
+	"github.com/joho/godotenv"
 
 	"github.com/lattots/enrich/pkg/catalog"
 	"github.com/lattots/enrich/pkg/config"
@@ -14,6 +17,14 @@ func main() {
 	conf, err := config.Load(configFilepath)
 	if err != nil {
 		log.Fatalln("error loading config file:", err)
+	}
+
+	env := os.Getenv("ENVIRONMENT")
+	if env == "local" { // If environment is local, secrets are loaded to environment variables
+		err := godotenv.Load(conf.Filepaths.SecretsFilepath)
+		if err != nil {
+			log.Fatalln("error loading .env file:", err)
+		}
 	}
 
 	cat, err := catalog.New(conf)

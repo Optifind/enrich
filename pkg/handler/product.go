@@ -27,7 +27,7 @@ func (h *Handler) HandleGetProduct(w http.ResponseWriter, r *http.Request) {
 	// Product ID is retrieved from URL path
 	id := r.PathValue("id")
 	if id == "" {
-		http.Error(w, "No id was provided", http.StatusBadRequest)
+		http.Error(w, "no id was provided", http.StatusBadRequest)
 		return
 	}
 
@@ -43,7 +43,7 @@ func (h *Handler) HandleGetProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if p == nil {
-		http.Error(w, "No product found for the given id", http.StatusNotFound)
+		http.Error(w, "no product found for the given id", http.StatusNotFound)
 		return
 	}
 
@@ -71,7 +71,6 @@ func (h *Handler) HandleGetProducts(w http.ResponseWriter, r *http.Request) {
 	countStr := r.URL.Query().Get("count")
 	count, err := parseCount(countStr)
 	if err != nil {
-		log.Println(err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -91,7 +90,12 @@ func (h *Handler) HandleGetProducts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Milvus database is searched for products that best match the Catalogs products.
+	if len(cat.Products) == 0 {
+		http.Error(w, "no products found for the given ids", http.StatusNotFound)
+		return
+	}
+
+	// Vector database is searched for products that best match the Catalogs products.
 	searchResults, err := cat.SearchSimilarStyle(count)
 	if err != nil {
 		log.Println(err)
@@ -111,7 +115,6 @@ func (h *Handler) HandleGetRandomProducts(w http.ResponseWriter, r *http.Request
 	countStr := r.URL.Query().Get("count")
 	count, err := parseCount(countStr)
 	if err != nil {
-		log.Println(err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -131,25 +134,16 @@ func (h *Handler) HandleGetRandomProducts(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	if len(cat.Products) == 0 {
+		http.Error(w, "no products to return", http.StatusNotFound)
+		return
+	}
+
 	// Result products are converted to a slice of ProductResponse.
 	productResponses := convertProductsToResponses(cat.Products)
 
 	// Product info is written to response writer.
 	writeJSONResponse(w, http.StatusOK, productResponses)
-}
-
-// parseCount tries to extract count from string. If no count is found, function defaults to predetermined number.
-// Returns an integer and an error.
-func parseCount(countStr string) (int, error) {
-	const defaultCount = 50
-	if countStr == "" {
-		return defaultCount, nil
-	}
-	count, err := strconv.Atoi(countStr)
-	if err != nil || !isValidCount(count) {
-		return 0, fmt.Errorf("count is not a positive integer or null")
-	}
-	return count, nil
 }
 
 // writeJSONResponse writes JSON encodable data to response writer with the provided status code.
@@ -163,9 +157,24 @@ func writeJSONResponse(w http.ResponseWriter, statusCode int, data interface{}) 
 	}
 }
 
+const maxCount = 1000
+
+// parseCount tries to extract count from string. If no count is found, function defaults to predetermined number.
+// Returns an integer and an error.
+func parseCount(countStr string) (int, error) {
+	const defaultCount = 50
+	if countStr == "" {
+		return defaultCount, nil
+	}
+	count, err := strconv.Atoi(countStr)
+	if err != nil || !isValidCount(count) {
+		return 0, fmt.Errorf("count is not an integer between [1-%d] or null", maxCount)
+	}
+	return count, nil
+}
+
 // isValidCount checks if count is within certain parameters.
 func isValidCount(count int) bool {
-	const maxCount = 1000
 	return count > 0 && count <= maxCount
 }
 

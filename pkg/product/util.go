@@ -2,26 +2,30 @@ package product
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"regexp"
 	"strconv"
+
+	"github.com/pgvector/pgvector-go"
 )
 
 // FromSQLRows converts SQL query results to a slice of Product
 func FromSQLRows(rows *sql.Rows) ([]*Product, error) {
-	var products []*Product
+	defer rows.Close()
+	products := make([]*Product, 0)
 	for rows.Next() {
-		p := &Product{}
+		p := new(Product)
 		err := scanProduct(rows, p)
 		if err != nil {
-			return nil, fmt.Errorf("error parsing product from rows: %s", err)
+			return nil, fmt.Errorf("error parsing product from rows: %w", err)
 		}
 
 		products = append(products, p)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("error during row iteration: %s", err)
+		return nil, fmt.Errorf("error during row iteration: %w", err)
 	}
 
 	return products, nil
@@ -29,18 +33,26 @@ func FromSQLRows(rows *sql.Rows) ([]*Product, error) {
 
 // FromSQLRow a single SQL query result to a Product
 func FromSQLRow(row *sql.Row) (*Product, error) {
-	var p *Product
+	p := new(Product)
 	err := scanProduct(row, p)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil // Product not found
+	}
 	if err != nil {
-		return nil, fmt.Errorf("error parsing product from row: %s", err)
+		return nil, fmt.Errorf("error parsing product from row: %w", err)
 	}
 	return p, nil
 }
 
+// Scanner for scanning from sql.Row or sql.Rows to Product
+// sql.Row and sql.Rows both implement scanner interface
+type scanner interface {
+	Scan(dest ...any) error
+}
+
 // scanProduct is a helper function for scanning SQL query results to Product
-func scanProduct(scanner interface {
-	Scan(dest ...interface{}) error
-}, p *Product) error {
+func scanProduct(scanner scanner, p *Product) error {
+	var styleEmbedding, useEmbedding pgvector.Vector // Embeddings need to be temporarily scanned to pgvector.Vector type
 	err := scanner.Scan(
 		&p.ID,
 		&p.Title,
@@ -50,12 +62,16 @@ func scanProduct(scanner interface {
 		&p.Image,
 		&p.StyleText,
 		&p.UseCaseText,
-		&p.StyleEmbedding,
-		&p.UseCaseEmbedding,
+		&styleEmbedding,
+		&useEmbedding,
 	)
 	if err != nil {
 		return fmt.Errorf("error scanning product: %w", err)
 	}
+	// Embeddings are set from temporary pgvector.Vector values
+	p.StyleEmbedding = styleEmbedding.Slice()
+	p.UseCaseEmbedding = useEmbedding.Slice()
+
 	return nil
 }
 
