@@ -19,14 +19,8 @@ dbname=$(echo $DATABASE_URL | sed -n 's/^postgres:\/\/[^:]\+:[^@]\+@[^:]\+:[0-9]
 # Export password to environment variable so pg_restore can use it
 export PGPASSWORD=$password
 
-# Drop and recreate the database to ensure a clean slate
-# Use caution with these commands as they will erase the existing database
-psql -h $host -p $port -U $username -d postgres -c "DROP DATABASE IF EXISTS $dbname;"
-psql -h $host -p $port -U $username -d postgres -c "CREATE DATABASE $dbname;"
-
-
 # Run pg_restore with the parsed components
-pg_restore --verbose --clean --no-acl --no-owner -h $host -p $port -U $username -d $dbname data/db_dumps/latest.dump
+pg_restore --verbose --clean --create --no-acl --no-owner -h $host -p $port -U $username -d $dbname data/db_dumps/latest.dump
 
 # Unset PGPASSWORD
 unset PGPASSWORD
