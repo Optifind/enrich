@@ -3,8 +3,6 @@ package main
 import (
 	"log"
 
-	"github.com/joho/godotenv"
-
 	"github.com/lattots/enrich/pkg/catalog"
 	"github.com/lattots/enrich/pkg/config"
 	"github.com/lattots/enrich/pkg/prompts"
@@ -18,12 +16,7 @@ func main() {
 		log.Fatalln("error loading config file:", err)
 	}
 
-	err = godotenv.Load(conf.Init.SecretsFilepath)
-	if err != nil {
-		log.Fatalln("error loading secrets to environment variables:", err)
-	}
-
-	cat, err := catalog.New(conf.Init)
+	cat, err := catalog.New(conf)
 	if err != nil {
 		log.Fatalln("error creating catalog object:", err)
 	}
@@ -33,27 +26,27 @@ func main() {
 		log.Fatalln("error creating product objects from CSV file:", err)
 	}
 
-	prmts, err := prompts.Load(conf.Init.PromptsFilepath)
+	prmts, err := prompts.Load(conf.Filepaths.PromptsFilepath)
 	if err != nil {
 		log.Fatalln("error reading prompts from file:", err)
 	}
 
-	err = cat.ProcessProducts(conf.Init, prmts)
+	err = cat.ProcessProducts(conf.OpenAI, prmts)
 	if err != nil {
 		log.Fatalln("error processing products:", err)
 	}
 
-	err = cat.InitCollection()
+	err = cat.InitDatabase()
 	if err != nil {
-		log.Fatalln("error initializing Milvus database collection:", err)
+		log.Fatalln("error initializing database:", err)
 	}
 
-	err = cat.InsertToMilvus(conf.Init)
+	err = cat.InsertToDB()
 	if err != nil {
-		log.Fatalln("error inserting catalog to Milvus:", err)
+		log.Fatalln("error inserting catalog to database:", err)
 	}
 
-	err = cat.CreateIndex(conf.Init)
+	err = cat.UpdateIndex()
 	if err != nil {
 		log.Fatalln("error creating index for Milvus collection:", err)
 	}
