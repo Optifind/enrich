@@ -12,6 +12,7 @@ import (
 
 	openaisdk "github.com/lattots/openai-sdk"
 	_ "github.com/lib/pq"
+	"github.com/pgvector/pgvector-go"
 
 	"github.com/lattots/enrich/pkg/config"
 	"github.com/lattots/enrich/pkg/product"
@@ -25,7 +26,8 @@ type Catalog struct {
 	Products      []*product.Product // Slice of pointers to products that belong to the catalog
 	DB            *sql.DB            // Database handle for product database
 	ProductTable  string             // Name of the product table
-	ColumnNames   config.ColumnNames // Milvus collection's column names
+	ColumnNames   config.ColumnNames // Product table's column names
+	EmbeddingDim  int                // Number of dimensions used by embeddings
 }
 
 // New creates a new Catalog object according to configuration options.
@@ -42,6 +44,7 @@ func New(conf config.Config) (*Catalog, error) {
 		DB:            db,
 		ProductTable:  conf.DB.ProductTable,
 		ColumnNames:   conf.DB.ColumnNames,
+		EmbeddingDim:  conf.DB.VectorDimensions,
 	}
 
 	return catalog, nil
@@ -79,7 +82,7 @@ func (c *Catalog) Load(count int, ids ...string) error {
 	if len(ids) > 0 {
 		placeholders := make([]string, len(ids))
 		for i, id := range ids {
-			placeholders[i] = "?"
+			placeholders[i] = fmt.Sprintf("$%d", i+1)
 			args = append(args, id)
 		}
 		queryBuilder.WriteString(" WHERE id IN (")
@@ -87,7 +90,7 @@ func (c *Catalog) Load(count int, ids ...string) error {
 		queryBuilder.WriteString(")")
 	}
 
-	queryBuilder.WriteString(" LIMIT ?")
+	queryBuilder.WriteString(fmt.Sprintf(" LIMIT $%d;", len(ids)+1))
 	args = append(args, count)
 
 	query := queryBuilder.String()
@@ -171,27 +174,37 @@ func (c *Catalog) ProcessProducts(conf config.OpenAI, prompts prompts.Prompts) e
 // InitDatabase initializes a new database collection with the catalogs' information.
 // Returns an error.
 func (c *Catalog) InitDatabase() error {
-	fmt.Println("Initializing database collection...")
+	fmt.Println("Initializing database...")
 
-	// Database table for products is created.
-	err := c.CreateTable()
+	// Existing product table is dropped.
+	err := c.dropTable()
 	if err != nil {
-		return fmt.Errorf("error creating database table: %w", err)
+		return fmt.Errorf("error dropping table: %w", err)
 	}
 
-	// Products are inserted to database.
-	err = c.InsertToDB()
+	// Database table for products is created.
+	err = c.createTable()
 	if err != nil {
-		return fmt.Errorf("error inserting products: %w", err)
+		return fmt.Errorf("error creating database table: %w", err)
 	}
 
 	return nil
 }
 
-func (c *Catalog) CreateTable() error {
+func (c *Catalog) dropTable() error {
+	fmt.Println("Dropping table...")
+	stmt := fmt.Sprintf("DROP TABLE IF EXISTS %s", c.ProductTable)
+	_, err := c.DB.Exec(stmt)
+	if err != nil {
+		return fmt.Errorf("error dropping table: %w", err)
+	}
+	return nil
+}
+
+func (c *Catalog) createTable() error {
 	fmt.Println("Creating table...")
-	query := fmt.Sprintf(`CREATE TABLE %s IF NOT EXISTS (
-		%s VARCHAR(15) PRIMARY KEY NOT NULL,
+	query := fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s (
+		%s VARCHAR(255) PRIMARY KEY NOT NULL,
 		%s VARCHAR(255),
 		%s TEXT,
 		%s NUMERIC(10, 2),
@@ -199,8 +212,9 @@ func (c *Catalog) CreateTable() error {
     	%s VARCHAR(255),
 		%s TEXT,
 		%s TEXT,
-		%s VECTOR(3072),
-		%s VECTOR(3072),);`,
+		%s VECTOR(%d),
+		%s VECTOR(%d)
+    	);`,
 		c.ProductTable,
 		c.ColumnNames.ID,
 		c.ColumnNames.Title,
@@ -211,7 +225,9 @@ func (c *Catalog) CreateTable() error {
 		c.ColumnNames.StyleText,
 		c.ColumnNames.UseCaseText,
 		c.ColumnNames.StyleEmbedding,
+		c.EmbeddingDim,
 		c.ColumnNames.UseCaseEmbedding,
+		c.EmbeddingDim,
 	)
 
 	_, err := c.DB.Exec(query)
@@ -224,10 +240,11 @@ func (c *Catalog) CreateTable() error {
 // InsertToDB inserts all products of the catalog into databases product table.
 // Returns an error.
 func (c *Catalog) InsertToDB() error {
+	fmt.Printf("Inserting %d products...\n", len(c.Products))
 	prefixes := make([]string, len(c.Products))
-	values := make([]interface{}, len(c.Products)*10)
-	for _, p := range c.Products {
-		prefixes = append(prefixes, "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+	values := make([]any, 0)
+	for i, p := range c.Products {
+		prefixes[i] = "($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
 		values = append(
 			values,
 			p.ID,
@@ -238,12 +255,13 @@ func (c *Catalog) InsertToDB() error {
 			p.Image,
 			p.StyleText,
 			p.UseCaseText,
-			p.StyleEmbedding,
-			p.UseCaseEmbedding,
+			pgvector.NewVector(p.StyleEmbedding),
+			pgvector.NewVector(p.UseCaseEmbedding),
 		)
 	}
+
 	stmt := fmt.Sprintf(
-		"INSERT INTO %s (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) VALUES %s",
+		"INSERT INTO %s (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) VALUES %s;",
 		c.ProductTable,
 		c.ColumnNames.ID,
 		c.ColumnNames.Title,
@@ -356,7 +374,7 @@ func (c *Catalog) SearchSimilarUseCase(count int) ([]*product.Product, error) {
 // vectorSearch searches the database with the given vector on the given column. It returns up to count number of products.
 func (c *Catalog) vectorSearch(vec []float32, vecColumn string, count int) ([]*product.Product, error) {
 	query := fmt.Sprintf(
-		"SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s FROM %s ORDER BY %s <=> %v LIMIT %d",
+		"SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s FROM %s ORDER BY %s <=> $1 LIMIT %d;",
 		c.ColumnNames.ID,
 		c.ColumnNames.Title,
 		c.ColumnNames.Description,
@@ -369,11 +387,10 @@ func (c *Catalog) vectorSearch(vec []float32, vecColumn string, count int) ([]*p
 		c.ColumnNames.UseCaseEmbedding,
 		c.ProductTable,
 		vecColumn,
-		vec,
 		count,
 	)
 
-	rows, err := c.DB.Query(query)
+	rows, err := c.DB.Query(query, pgvector.NewVector(vec))
 	if err != nil {
 		return nil, fmt.Errorf("error searching products: %w", err)
 	}

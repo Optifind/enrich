@@ -1,5 +1,10 @@
 package vector
 
+import (
+	"fmt"
+	"strings"
+)
+
 // GetAverageVec returns the average vector of the given vectors.
 func GetAverageVec(vectors [][]float32) []float32 {
 	sumVec := GetSumVec(vectors)
@@ -17,4 +22,18 @@ func GetSumVec(vectors [][]float32) []float32 {
 		}
 	}
 	return sumVec
+}
+
+func NewPGVector(vector []float32) string {
+	strVec := vecToString(vector)
+	return fmt.Sprintf("[%s]", strVec)
+}
+
+// Concatenates vector to a string. Vector components are separated by comma.
+func vecToString(vec []float32) string {
+	texts := make([]string, len(vec))
+	for i := range vec {
+		texts[i] = fmt.Sprint(vec[i])
+	}
+	return strings.Join(texts, ",")
 }

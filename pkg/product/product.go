@@ -69,7 +69,7 @@ func FromRow(row []string) (*Product, error) {
 // GetById fetches a product corresponding to ID from database. Returns a pointer to product and error.
 func GetById(db *sql.DB, config config.Config, id string) (*Product, error) {
 	cn := &config.DB.ColumnNames // Makes the code more concise
-	query := fmt.Sprintf("SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s FROM %s WHERE id = ?",
+	query := fmt.Sprintf("SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s FROM %s WHERE id = $1;",
 		cn.ID,
 		cn.Title,
 		cn.Description,
@@ -84,10 +84,16 @@ func GetById(db *sql.DB, config config.Config, id string) (*Product, error) {
 	)
 
 	res := db.QueryRow(query, id)
+	if err := res.Err(); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil // Product not found
+		}
+		return nil, fmt.Errorf("error fetching product from database: %w", err)
+	}
 
 	product, err := FromSQLRow(res)
 	if err != nil {
-		return nil, fmt.Errorf("error fetching product from database: %s", err)
+		return nil, fmt.Errorf("error parsing product info: %w", err)
 	}
 
 	// Pointer to product is returned.
@@ -179,13 +185,30 @@ func (p *Product) CreateUseCaseText(client openaisdk.APIClient, GPTModel string,
 // product and saves the embedding to product's StyleEmbedding field.
 // Returns an error.
 func (p *Product) CreateEmbeddings(client openaisdk.APIClient, embeddingsModel string) error {
-	// Embedding for the StyleText is created.
-	resp, err := client.CreateVectorEmbedding(embeddingsModel, p.StyleText)
+	styleVec, err := createEmbedding(client, embeddingsModel, p.StyleText)
 	if err != nil {
-		return err
+		return fmt.Errorf("error creating style embedding: %w", err)
+	}
+	p.StyleEmbedding = styleVec
+
+	useVec, err := createEmbedding(client, embeddingsModel, p.UseCaseText)
+	if err != nil {
+		return fmt.Errorf("error creating use-case embedding: %w", err)
+	}
+	p.UseCaseEmbedding = useVec
+
+	return nil
+}
+
+// Creates embedding for text with given OpenAI client. Returns float32 embedding and an error.
+func createEmbedding(client openaisdk.APIClient, embeddingsModel, text string) ([]float32, error) {
+	// Embedding for the text is created.
+	resp, err := client.CreateVectorEmbedding(embeddingsModel, text)
+	if err != nil {
+		return nil, err
 	}
 
-	// This is the float64 embedding for style text
+	// This is the float64 embedding for the text
 	f64Vector := resp.Data[0].Embedding
 	// Float64 must be converted to float32 for later use
 	f32Vector := make([]float32, len(f64Vector))
@@ -193,9 +216,7 @@ func (p *Product) CreateEmbeddings(client openaisdk.APIClient, embeddingsModel s
 		f32Vector[i] = float32(f)
 	}
 
-	// Created embedding is saved to product object's StyleEmbedding field.
-	p.StyleEmbedding = f32Vector
-	return nil
+	return f32Vector, nil
 }
 
 // CreateAttributes TODO: Method should create product attributes with GPT and parse them to Attributes object.

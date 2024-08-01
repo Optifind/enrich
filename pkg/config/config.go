@@ -19,11 +19,13 @@ type Config struct {
 type Filepaths struct {
 	CatalogFilepath string `json:"catalog-filepath"`
 	PromptsFilepath string `json:"prompts-filepath"`
+	SecretsFilepath string `json:"secrets-filepath"`
 }
 
 type Database struct {
-	ProductTable string      `json:"product-table"`
-	ColumnNames  ColumnNames `json:"column-names"`
+	ProductTable     string      `json:"product-table"`
+	ColumnNames      ColumnNames `json:"column-names"`
+	VectorDimensions int         `json:"vector-dimensions"`
 }
 
 // ColumnNames is a struct for holding column names used database table.
