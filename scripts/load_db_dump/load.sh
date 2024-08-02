@@ -19,8 +19,10 @@ dbname=$(echo $DATABASE_URL | sed -n 's/^postgres:\/\/[^:]\+:[^@]\+@[^:]\+:[0-9]
 # Export password to environment variable so pg_restore can use it
 export PGPASSWORD=$password
 
+dump_filepath="data/db_dumps/latest.dump"
+
 # Run pg_restore with the parsed components
-pg_restore --verbose --clean --no-acl --no-owner -d "$DATABASE_URL" database.dump
+pg_restore --verbose --clean --no-acl --no-owner -d "$DATABASE_URL" "$dump_filepath"
 
 # Unset PGPASSWORD
 unset PGPASSWORD
