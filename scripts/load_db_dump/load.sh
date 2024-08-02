@@ -34,8 +34,23 @@ END
 \$do\$;
 EOF
 
-# Run pg_restore with the parsed components
-pg_restore --verbose --clean --if-exists --no-acl --no-owner -d "$DATABASE_URL" "$dump_filepath"
+# Run pg_restore with the parsed components and handle extension comments
+echo "Restoring database from dump file..."
+pg_restore --verbose --clean --if-exists --no-acl --no-owner -h "$host" -p "$port" -U "$username" -d "$dbname" "$dump_filepath" || true
 
+# Reapply extension comments (ignore errors if not a superuser)
+psql $DATABASE_URL <<EOF
+DO
+\$do\$
+BEGIN
+    BEGIN
+        EXECUTE 'COMMENT ON EXTENSION vector IS ''vector data type and ivfflat and hnsw access methods''';
+    EXCEPTION
+        WHEN insufficient_privilege THEN
+            RAISE NOTICE 'Skipping COMMENT ON EXTENSION due to insufficient privileges';
+    END;
+END
+\$do\$;
+EOF
 # Unset PGPASSWORD
 unset PGPASSWORD
