@@ -21,8 +21,21 @@ export PGPASSWORD=$password
 
 dump_filepath="data/db_dumps/latest.dump"
 
+# Pre-drop the extension with cascade to avoid dependency issues
+echo "Dropping extensions to avoid dependency issues..."
+psql $DATABASE_URL <<EOF
+DO
+\$do\$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'vector') THEN
+        EXECUTE 'DROP EXTENSION vector CASCADE';
+    END IF;
+END
+\$do\$;
+EOF
+
 # Run pg_restore with the parsed components
-pg_restore --verbose --clean --no-acl --no-owner -d "$DATABASE_URL" "$dump_filepath"
+pg_restore --verbose --clean --if-exists --no-acl --no-owner -d "$DATABASE_URL" "$dump_filepath"
 
 # Unset PGPASSWORD
 unset PGPASSWORD
