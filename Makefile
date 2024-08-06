@@ -9,11 +9,17 @@ BINARY_DIR=bin
 # Default target
 all: init api test
 
+HOST=localhost
+USERNAME=enrich
+DB_NAME=enrich_test
+DUMP_FILEPATH=data/db_dumps/latest.dump
+HEROKU_APP_NAME=enrich-optifind-v0
+
 # Initialization target
 init: $(BINARY_DIR)/init_db
 	$(BINARY_DIR)/init_db
-	rm data/db_dumps/latest.sql
-	sudo -u postgres pg_dump enrich_test > data/db_dumps/latest.sql
+	rm $(DUMP_FILEPATH)
+	pg_dump -Fc --no-acl --no-owner -h $(HOST) -U $(USERNAME) -d $(DB_NAME) -f $(DUMP_FILEPATH)
 
 # API target
 api: $(BINARY_DIR)/api
