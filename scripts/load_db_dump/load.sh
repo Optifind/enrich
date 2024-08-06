@@ -52,5 +52,6 @@ BEGIN
 END
 \$do\$;
 EOF
+
 # Unset PGPASSWORD
 unset PGPASSWORD
