@@ -1,6 +1,6 @@
 {
   "filepaths": {
-    "catalog-filepath": "./data/csv_input/example.csv",
+    "catalog-filepath": "./data/csv_input/items_1.csv",
     "prompts-filepath": "./data/prompts.json",
     "secrets-filepath": "./data/secrets.env"
   },
@@ -22,7 +22,7 @@
     "vector-dimensions": 1536
   },
   "open-ai": {
-    "gpt-model": "gpt-4o",
+    "gpt-model": "gpt-4o-mini",
     "embeddings-model": "text-embedding-3-small"
   }
 }
