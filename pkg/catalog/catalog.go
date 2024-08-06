@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"time"
 
 	openaisdk "github.com/lattots/openai-sdk"
 	_ "github.com/lib/pq"
@@ -162,11 +163,13 @@ func (c *Catalog) CreateProducts() error {
 func (c *Catalog) ProcessProducts(conf config.OpenAI, prompts prompts.Prompts) error {
 	fmt.Println("Processing products...")
 	openAIClient := openaisdk.NewAPIClient(os.Getenv("OPENAI_TOKEN"))
-	for _, p := range c.Products {
+	for i, p := range c.Products {
+		start := time.Now()
 		err := p.Process(*openAIClient, conf.GPTModel, conf.EmbeddingsModel, prompts)
 		if err != nil {
 			return err
 		}
+		fmt.Printf("Product %d processed in %s\n", i, time.Since(start))
 	}
 	return nil
 }
@@ -244,7 +247,19 @@ func (c *Catalog) InsertToDB() error {
 	prefixes := make([]string, len(c.Products))
 	values := make([]any, 0)
 	for i, p := range c.Products {
-		prefixes[i] = "($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)"
+		prefixes[i] = fmt.Sprintf(
+			"($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
+			i*10+1,
+			i*10+2,
+			i*10+3,
+			i*10+4,
+			i*10+5,
+			i*10+6,
+			i*10+7,
+			i*10+8,
+			i*10+9,
+			i*10+10,
+		)
 		values = append(
 			values,
 			p.ID,
