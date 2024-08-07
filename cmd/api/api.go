@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+
 	"github.com/lattots/enrich/pkg/config"
 	"github.com/lattots/enrich/pkg/handler"
 )
@@ -39,33 +40,13 @@ func main() {
 	router := http.NewServeMux()
 
 	// Routes.
-	router.HandleFunc("/product/{id}", h.HandleGetProduct)
-	router.HandleFunc("/products", h.HandleGetProducts)
-
-	// Wrap the router with CORS middleware
-	corsHandler := corsMiddleware(router)
+	router.HandleFunc("GET /product/{id}", h.HandleGetProduct)
+	router.HandleFunc("GET /products", h.HandleGetProducts)
 
 	// Get PORT from Heroku env
 	port := ":" + os.Getenv("PORT")
 	fmt.Printf("Server started on port %s\n", port)
-	if err := http.ListenAndServe(port, corsHandler); err != nil {
+	if err := http.ListenAndServe(port, router); err != nil {
 		log.Fatalln("unexpected error: ", err)
 	}
-}
-
-func corsMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-
-		// If it's a preflight request, stop here
-		if r.Method == "OPTIONS" {
-			w.WriteHeader(http.StatusOK)
-			return
-		}
-
-		// Serve the request to the next middleware/handler
-		next.ServeHTTP(w, r)
-	})
 }
