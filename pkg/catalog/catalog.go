@@ -177,6 +177,7 @@ func (c *Catalog) ProcessProducts(conf config.OpenAI, prompts prompts.Prompts) e
 			fmt.Printf("Product %d processed in %s\n", i, time.Since(start))
 			return nil
 		})
+		time.Sleep(50 * time.Millisecond)
 	}
 
 	// Wait for all goroutines to finish and return the first returned error
