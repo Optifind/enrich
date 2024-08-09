@@ -14,6 +14,7 @@ import (
 	openaisdk "github.com/lattots/openai-sdk"
 	_ "github.com/lib/pq"
 	"github.com/pgvector/pgvector-go"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/lattots/enrich/pkg/config"
 	"github.com/lattots/enrich/pkg/product"
@@ -163,15 +164,29 @@ func (c *Catalog) CreateProducts() error {
 func (c *Catalog) ProcessProducts(conf config.OpenAI, prompts prompts.Prompts) error {
 	fmt.Println("Processing products...")
 	openAIClient := openaisdk.NewAPIClient(os.Getenv("OPENAI_TOKEN"))
+
+	// errgroup is package for handling errors in a concurrent application
+	var g errgroup.Group
+
 	for i, p := range c.Products {
-		start := time.Now()
-		err := p.Process(*openAIClient, conf.GPTModel, conf.EmbeddingsModel, prompts)
-		if err != nil {
-			return err
-		}
-		fmt.Printf("Product %d processed in %s\n", i, time.Since(start))
+		g.Go(func() error {
+			start := time.Now()
+			if err := p.Process(*openAIClient, conf.GPTModel, conf.EmbeddingsModel, prompts); err != nil {
+				return fmt.Errorf("product %d: %w", i, err)
+			}
+			fmt.Printf("Product %d processed in %s\n", i, time.Since(start))
+			return nil
+		})
+		// Program sleeps to prevent hitting OpenAI API limiter
+		// TODO: Optimize sleep time to better utilize available API capacity
+		time.Sleep(50 * time.Millisecond)
 	}
-	return nil
+
+	// Wait for all goroutines to finish and return the first returned error
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("error processing product: %w", err)
+	}
+	return nil // If no errors occur, method returns nil
 }
 
 // InitDatabase initializes a new database collection with the catalogs' information.
