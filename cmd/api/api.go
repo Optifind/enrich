@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/joho/godotenv"
+	"github.com/rs/cors"
 
 	"github.com/lattots/enrich/pkg/config"
 	"github.com/lattots/enrich/pkg/handler"
@@ -43,10 +44,13 @@ func main() {
 	router.HandleFunc("GET /product/{id}", h.HandleGetProduct)
 	router.HandleFunc("GET /products", h.HandleGetProducts)
 
+	// Router now uses the cors middleware to accept all incoming requests
+	corsRouter := cors.Default().Handler(router)
+
 	// Get PORT from Heroku env
 	port := ":" + os.Getenv("PORT")
 	fmt.Printf("Server started on port %s\n", port)
-	if err := http.ListenAndServe(port, router); err != nil {
+	if err := http.ListenAndServe(port, corsRouter); err != nil {
 		log.Fatalln("unexpected error: ", err)
 	}
 }
