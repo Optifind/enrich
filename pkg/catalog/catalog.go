@@ -177,6 +177,8 @@ func (c *Catalog) ProcessProducts(conf config.OpenAI, prompts prompts.Prompts) e
 			fmt.Printf("Product %d processed in %s\n", i, time.Since(start))
 			return nil
 		})
+		// Program sleeps to prevent hitting OpenAI API limiter
+		// TODO: Optimize sleep time to better utilize available API capacity
 		time.Sleep(50 * time.Millisecond)
 	}
 
