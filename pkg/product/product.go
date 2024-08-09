@@ -105,13 +105,13 @@ func GetById(db *sql.DB, config config.Config, id string) (*Product, error) {
 // Returns an error.
 func (p *Product) Process(client openaisdk.APIClient, GPTModel, embeddingsModel string, prompts prompts.Prompts) error {
 	// Style text is created and saved to product's StyleText field.
-	err := p.CreateStyleText(client, GPTModel, prompts.StyleText)
+	err, _ := p.CreateStyleText(client, GPTModel, prompts.StyleText)
 	if err != nil {
 		return err
 	}
 
 	// Use case text is created and saved to product's UseCaseText field.
-	err = p.CreateUseCaseText(client, GPTModel, prompts.UseCaseText)
+	err, _ = p.CreateUseCaseText(client, GPTModel, prompts.UseCaseText)
 	if err != nil {
 		return err
 	}
@@ -124,7 +124,7 @@ func (p *Product) Process(client openaisdk.APIClient, GPTModel, embeddingsModel 
 
 // CreateStyleText creates style description with OpenAI's GPT model according to prompts.
 // Resulting description is saved to product's StyleText field. Returns an error.
-func (p *Product) CreateStyleText(client openaisdk.APIClient, GPTModel string, prompt []openaisdk.Message) error {
+func (p *Product) CreateStyleText(client openaisdk.APIClient, GPTModel string, prompt []openaisdk.Message) (error, int) {
 	// Product information is concatenated to a single string.
 	productInfo := fmt.Sprintf("Title: %s\nDescription: %s", p.Title, p.Description)
 
@@ -133,7 +133,7 @@ func (p *Product) CreateStyleText(client openaisdk.APIClient, GPTModel string, p
 		Role: "user",
 		Content: []openaisdk.Content{
 			openaisdk.NewTextContent(productInfo),
-			openaisdk.NewImageContent(p.Image),
+			openaisdk.NewImageContent(p.Image, "low"),
 		},
 	}
 
@@ -143,17 +143,17 @@ func (p *Product) CreateStyleText(client openaisdk.APIClient, GPTModel string, p
 	// Chat completion is created with the prompt messages and product information.
 	resp, err := client.CreateChatCompletion(GPTModel, fullPrompt, 3000)
 	if err != nil {
-		return err
+		return err, 0
 	}
 
 	// Style text is saved to the product object.
 	p.StyleText = resp.Choices[0].Message.Content
-	return nil
+	return nil, resp.Usage.TotalTokens
 }
 
 // CreateUseCaseText creates use case description with OpenAI's GPT model according to prompts.
 // Resulting description is saved to product's UseCaseText field. Returns an error.
-func (p *Product) CreateUseCaseText(client openaisdk.APIClient, GPTModel string, prompt []openaisdk.Message) error {
+func (p *Product) CreateUseCaseText(client openaisdk.APIClient, GPTModel string, prompt []openaisdk.Message) (error, int) {
 	// Product information is concatenated to a single string.
 	productInfo := fmt.Sprintf("Title: %s\nDescription: %s", p.Title, p.Description)
 
@@ -162,7 +162,7 @@ func (p *Product) CreateUseCaseText(client openaisdk.APIClient, GPTModel string,
 		Role: "user",
 		Content: []openaisdk.Content{
 			openaisdk.NewTextContent(productInfo),
-			openaisdk.NewImageContent(p.Image),
+			openaisdk.NewImageContent(p.Image, "low"),
 		},
 	}
 
@@ -172,12 +172,12 @@ func (p *Product) CreateUseCaseText(client openaisdk.APIClient, GPTModel string,
 	// Chat completion is created with the prompt messages and product information.
 	resp, err := client.CreateChatCompletion(GPTModel, fullPrompt, 3000)
 	if err != nil {
-		return err
+		return err, 0
 	}
 
 	// Use case text is saved to the product object.
 	p.UseCaseText = resp.Choices[0].Message.Content
-	return nil
+	return nil, resp.Usage.TotalTokens
 }
 
 // CreateEmbeddings creates embeddings some or all fields of the product.
