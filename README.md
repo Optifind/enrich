@@ -1,5 +1,9 @@
 # Enrich
 
+## What is Enrich?
+
+Enrich is a product information enrichment and recommendation program. It uses AI to enrich product information that is then used to create smart recommendations for online store users.
+
 ## Installation
 
 ### Prerequisites
