@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	openaisdk "github.com/lattots/openai-sdk"
+	"github.com/muesli/clusters"
 
 	"github.com/lattots/enrich/pkg/config"
 	"github.com/lattots/enrich/pkg/prompts"
@@ -24,8 +25,13 @@ type Product struct {
 	StyleText   string `json:"style-text"`    // Description of products design style
 	UseCaseText string `json:"use-case-text"` // Description of products use case
 
-	StyleEmbedding   []float32 `json:"style-embedding"`    // Embedding of product's design style
-	UseCaseEmbedding []float32 `json:"use-case-embedding"` // Embedding of product's use case
+	StyleEmbedding     []float32 `json:"style-embedding"` // Embedding of product's design style
+	StyleObservation   clusters.Observation
+	UseCaseEmbedding   []float32 `json:"use-case-embedding"` // Embedding of product's use case
+	UseCaseObservation clusters.Observation
+
+	StyleCluster   int `json:"style-cluster"`    // Cluster number of products design style
+	UseCaseCluster int `json:"use-case-cluster"` // Cluster number of products use case
 
 	Attributes Attributes `json:"attributes"` // Attributes used to classify the product
 }

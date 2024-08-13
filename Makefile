@@ -28,6 +28,7 @@ api: $(BINARY_DIR)/api
 # Test target
 test:
 	$(GO_TEST) ./pkg/vector/
+	$(GO_TEST) ./pkg/catalog/
 
 # Build init_db binary
 build-init: $(BINARY_DIR)/init_db

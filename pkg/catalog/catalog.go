@@ -13,6 +13,8 @@ import (
 
 	openaisdk "github.com/lattots/openai-sdk"
 	_ "github.com/lib/pq"
+	"github.com/muesli/clusters"
+	"github.com/muesli/kmeans"
 	"github.com/pgvector/pgvector-go"
 	"golang.org/x/sync/errgroup"
 
@@ -230,6 +232,8 @@ func (c *Catalog) createTable() error {
     	%s VARCHAR(255),
 		%s TEXT,
 		%s TEXT,
+    	%s SMALLINT,
+    	%s SMALLINT,
 		%s VECTOR(%d),
 		%s VECTOR(%d)
     	);`,
@@ -242,6 +246,8 @@ func (c *Catalog) createTable() error {
 		c.ColumnNames.Image,
 		c.ColumnNames.StyleText,
 		c.ColumnNames.UseCaseText,
+		c.ColumnNames.StyleCluster,
+		c.ColumnNames.UseCaseCluster,
 		c.ColumnNames.StyleEmbedding,
 		c.EmbeddingDim,
 		c.ColumnNames.UseCaseEmbedding,
@@ -261,22 +267,9 @@ func (c *Catalog) InsertToDB() error {
 	fmt.Printf("Inserting %d products...\n", len(c.Products))
 	prefixes := make([]string, len(c.Products))
 	values := make([]any, 0)
+	var v []any
 	for i, p := range c.Products {
-		prefixes[i] = fmt.Sprintf(
-			"($%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d, $%d)",
-			i*10+1,
-			i*10+2,
-			i*10+3,
-			i*10+4,
-			i*10+5,
-			i*10+6,
-			i*10+7,
-			i*10+8,
-			i*10+9,
-			i*10+10,
-		)
-		values = append(
-			values,
+		v = []any{
 			p.ID,
 			p.Title,
 			p.Description,
@@ -285,13 +278,19 @@ func (c *Catalog) InsertToDB() error {
 			p.Image,
 			p.StyleText,
 			p.UseCaseText,
+			p.StyleCluster,
+			p.UseCaseCluster,
 			pgvector.NewVector(p.StyleEmbedding),
 			pgvector.NewVector(p.UseCaseEmbedding),
-		)
+		}
+
+		prefixes[i] = getPrefix(i, len(v))
+
+		values = append(values, v...)
 	}
 
 	stmt := fmt.Sprintf(
-		"INSERT INTO %s (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) VALUES %s;",
+		"INSERT INTO %s (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) VALUES %s;",
 		c.ProductTable,
 		c.ColumnNames.ID,
 		c.ColumnNames.Title,
@@ -301,6 +300,8 @@ func (c *Catalog) InsertToDB() error {
 		c.ColumnNames.Image,
 		c.ColumnNames.StyleText,
 		c.ColumnNames.UseCaseText,
+		c.ColumnNames.StyleCluster,
+		c.ColumnNames.UseCaseCluster,
 		c.ColumnNames.StyleEmbedding,
 		c.ColumnNames.UseCaseEmbedding,
 		strings.Join(prefixes, ", "),
@@ -311,6 +312,21 @@ func (c *Catalog) InsertToDB() error {
 		return fmt.Errorf("error inserting products into table: %w", err)
 	}
 	return nil
+}
+
+// getPrefix returns the value placeholder string used by Postgres.
+// It is used for inserting multiple values to multiple database rows.
+func getPrefix(i, numOfValues int) string {
+	prefix := "("
+	var valPlaceholders []string
+	for j := 1; j <= numOfValues; j++ {
+		valPlaceholders = append(valPlaceholders, fmt.Sprintf("$%d", i*numOfValues+j))
+	}
+
+	prefix += strings.Join(valPlaceholders, ", ")
+
+	prefix += ")"
+	return prefix
 }
 
 // UpdateIndex creates index for style embeddings and use case embeddings. Returns an error.
@@ -356,6 +372,68 @@ func (c *Catalog) UpdateIndex() error {
 	if err != nil {
 		return fmt.Errorf("error creating index: %w", err)
 	}
+	return nil
+}
+
+// Cluster performs k-means clustering for all products in catalog for both style and use case embeddings.
+// Adds cluster numbers for all products. Returns an error.
+func (c *Catalog) Cluster(conf config.Clusters) error {
+	err := c.clusterColumn(conf.StyleK, c.ColumnNames.StyleEmbedding)
+	if err != nil {
+		return fmt.Errorf("error clustering products based on style: %w", err)
+	}
+	err = c.clusterColumn(conf.UseCaseK, c.ColumnNames.UseCaseEmbedding)
+	if err != nil {
+		return fmt.Errorf("error clustering products based on use case: %w", err)
+	}
+	return nil
+}
+
+// clusterColumn performs k-means clustering for products in catalog for the specified column.
+// Adds cluster number for all products in catalog. Returns an error.
+func (c *Catalog) clusterColumn(k int, column string) error {
+	var data clusters.Observations
+	for _, p := range c.Products {
+		var vec64 []float64
+		switch column {
+		case c.ColumnNames.StyleEmbedding:
+			vec64 = toFloat64(p.StyleEmbedding)
+		case c.ColumnNames.UseCaseEmbedding:
+			vec64 = toFloat64(p.UseCaseEmbedding)
+		default:
+			return errors.New("unknown column")
+		}
+
+		coord := clusters.Coordinates(vec64)
+		data = append(data, coord)
+
+		// Embedding is added to product object in clusters.Observation type
+		// This is later used for deciding what cluster does the product belong to
+		obs := clusters.Observation(coord)
+		switch column {
+		case c.ColumnNames.StyleEmbedding:
+			p.StyleObservation = obs
+		case c.ColumnNames.UseCaseEmbedding:
+			p.UseCaseObservation = obs
+		}
+	}
+
+	km := kmeans.New()
+	clusts, err := km.Partition(data, k) // Data is partitioned into clusters
+	if err != nil {
+		return fmt.Errorf("error clustering products: %w", err)
+	}
+
+	// All products will get their nearest cluster added to them
+	for _, p := range c.Products {
+		switch column {
+		case c.ColumnNames.StyleEmbedding:
+			p.StyleCluster = clusts.Nearest(p.StyleObservation)
+		case c.ColumnNames.UseCaseEmbedding:
+			p.UseCaseCluster = clusts.Nearest(p.UseCaseObservation)
+		}
+	}
+
 	return nil
 }
 
@@ -432,4 +510,12 @@ func (c *Catalog) vectorSearch(vec []float32, vecColumn string, count int) ([]*p
 	}
 
 	return products, nil
+}
+
+func toFloat64(vec []float32) []float64 {
+	res := make([]float64, len(vec))
+	for i, v := range vec {
+		res[i] = float64(v)
+	}
+	return res
 }
