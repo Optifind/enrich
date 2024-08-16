@@ -13,8 +13,7 @@ import (
 
 	openaisdk "github.com/lattots/openai-sdk"
 	_ "github.com/lib/pq"
-	"github.com/muesli/clusters"
-	"github.com/muesli/kmeans"
+	"github.com/mpraski/clusters"
 	"github.com/pgvector/pgvector-go"
 	"golang.org/x/sync/errgroup"
 
@@ -56,15 +55,12 @@ func New(conf config.Config) (*Catalog, error) {
 
 // Load fetches product's in Catalog's product database to memory.
 //
-// `count` (required) determines the maximum amount of products that will be loaded.
+// `count` (optional) determines the maximum amount of products that will be loaded. 0 will load all available products.
 //
 // `ids` (optional) determines the products that will be loaded.
 //
 // Returns an error.
 func (c *Catalog) Load(count int, ids ...string) error {
-	if count <= 0 {
-		return errors.New("count must be greater than 0")
-	}
 	var queryBuilder strings.Builder
 	queryBuilder.WriteString("SELECT ")
 	queryBuilder.WriteString(strings.Join([]string{
@@ -94,8 +90,13 @@ func (c *Catalog) Load(count int, ids ...string) error {
 		queryBuilder.WriteString(")")
 	}
 
-	queryBuilder.WriteString(fmt.Sprintf(" LIMIT $%d;", len(ids)+1))
-	args = append(args, count)
+	if count > 0 {
+		queryBuilder.WriteString(fmt.Sprintf(" LIMIT $%d;", len(ids)+1))
+		args = append(args, count)
+	}
+	if count < 0 {
+		return errors.New("count must be 0 or larger")
+	}
 
 	query := queryBuilder.String()
 
@@ -329,6 +330,19 @@ func getPrefix(i, numOfValues int) string {
 	return prefix
 }
 
+// UpdateProducts updates database entries of all products in catalog. Returns an error.
+func (c *Catalog) UpdateProducts() error {
+	fmt.Println("Updating products...")
+	var err error
+	for _, p := range c.Products {
+		err = p.Update(c.DB, c.ProductTable, c.ColumnNames)
+		if err != nil {
+			return fmt.Errorf("error updating product: %w", err)
+		}
+	}
+	return nil
+}
+
 // UpdateIndex creates index for style embeddings and use case embeddings. Returns an error.
 func (c *Catalog) UpdateIndex() error {
 	// Old indices are dropped if they already exist.
@@ -375,62 +389,103 @@ func (c *Catalog) UpdateIndex() error {
 	return nil
 }
 
-// Cluster performs k-means clustering for all products in catalog for both style and use case embeddings.
+// Cluster performs clustering for all products in catalog for both style and use case embeddings.
 // Adds cluster numbers for all products. Returns an error.
 func (c *Catalog) Cluster(conf config.Clusters) error {
-	err := c.clusterColumn(conf.StyleK, c.ColumnNames.StyleEmbedding)
-	if err != nil {
-		return fmt.Errorf("error clustering products based on style: %w", err)
+	switch conf.Algorithm {
+	case "k-means":
+		err := c.kMeansClusterColumn(conf.KMeans.StyleK, c.ColumnNames.StyleEmbedding)
+		if err != nil {
+			return fmt.Errorf("error clustering products based on style: %w", err)
+		}
+		err = c.kMeansClusterColumn(conf.KMeans.UseCaseK, c.ColumnNames.UseCaseEmbedding)
+		if err != nil {
+			return fmt.Errorf("error clustering products based on use case: %w", err)
+		}
+	case "dbscan":
+		err := c.dBSCANClusterColumn(conf.DBSCAN.MinPoints, conf.DBSCAN.Epsilon, c.ColumnNames.StyleEmbedding)
+		if err != nil {
+			return fmt.Errorf("error clustering products based on style: %w", err)
+		}
+		err = c.dBSCANClusterColumn(conf.DBSCAN.MinPoints, conf.DBSCAN.Epsilon, c.ColumnNames.UseCaseEmbedding)
+		if err != nil {
+			return fmt.Errorf("error clustering products based on use case: %w", err)
+		}
+	default:
+		return fmt.Errorf("unknown clustering algorithm: expected \"k-means\" or \"dbscan\", got \"%s\"", conf.Algorithm)
 	}
-	err = c.clusterColumn(conf.UseCaseK, c.ColumnNames.UseCaseEmbedding)
-	if err != nil {
-		return fmt.Errorf("error clustering products based on use case: %w", err)
-	}
+
 	return nil
 }
 
 // clusterColumn performs k-means clustering for products in catalog for the specified column.
 // Adds cluster number for all products in catalog. Returns an error.
-func (c *Catalog) clusterColumn(k int, column string) error {
-	var data clusters.Observations
-	for _, p := range c.Products {
-		var vec64 []float64
+func (c *Catalog) kMeansClusterColumn(k int, column string) error {
+	data := make([][]float64, len(c.Products))
+	for i, p := range c.Products {
 		switch column {
 		case c.ColumnNames.StyleEmbedding:
-			vec64 = toFloat64(p.StyleEmbedding)
+			data[i] = toFloat64(p.StyleEmbedding)
 		case c.ColumnNames.UseCaseEmbedding:
-			vec64 = toFloat64(p.UseCaseEmbedding)
+			data[i] = toFloat64(p.UseCaseEmbedding)
 		default:
 			return errors.New("unknown column")
 		}
-
-		coord := clusters.Coordinates(vec64)
-		data = append(data, coord)
-
-		// Embedding is added to product object in clusters.Observation type
-		// This is later used for deciding what cluster does the product belong to
-		obs := clusters.Observation(coord)
-		switch column {
-		case c.ColumnNames.StyleEmbedding:
-			p.StyleObservation = obs
-		case c.ColumnNames.UseCaseEmbedding:
-			p.UseCaseObservation = obs
-		}
 	}
 
-	km := kmeans.New()
-	clusts, err := km.Partition(data, k) // Data is partitioned into clusters
+	const maxIterations = 1000
+	kmeans, err := clusters.KMeans(maxIterations, k, clusters.EuclideanDistance)
+	if err != nil {
+		return fmt.Errorf("error creating clusterer: %w", err)
+	}
+
+	err = kmeans.Learn(data)
 	if err != nil {
 		return fmt.Errorf("error clustering products: %w", err)
 	}
 
-	// All products will get their nearest cluster added to them
-	for _, p := range c.Products {
+	for idx, cluster := range kmeans.Guesses() {
 		switch column {
 		case c.ColumnNames.StyleEmbedding:
-			p.StyleCluster = clusts.Nearest(p.StyleObservation)
+			c.Products[idx].StyleCluster = cluster
 		case c.ColumnNames.UseCaseEmbedding:
-			p.UseCaseCluster = clusts.Nearest(p.UseCaseObservation)
+			c.Products[idx].UseCaseCluster = cluster
+		}
+	}
+
+	return nil
+}
+
+// dBSCANClusterColumn performs DBSCAN clustering for products in catalog for the specified column.
+// Adds cluster number for all products in catalog. Returns an error.
+func (c *Catalog) dBSCANClusterColumn(minpts int, eps float64, column string) error {
+	data := make([][]float64, len(c.Products))
+	for i, p := range c.Products {
+		switch column {
+		case c.ColumnNames.StyleEmbedding:
+			data[i] = toFloat64(p.StyleEmbedding)
+		case c.ColumnNames.UseCaseEmbedding:
+			data[i] = toFloat64(p.UseCaseEmbedding)
+		}
+	}
+
+	// Clusterer object is created
+	dbscan, err := clusters.DBSCAN(minpts, eps, 0, clusters.EuclideanDistance)
+	if err != nil {
+		return fmt.Errorf("error creating clusterer: %w", err)
+	}
+
+	err = dbscan.Learn(data)
+	if err != nil {
+		return fmt.Errorf("error clustering products: %w", err)
+	}
+
+	for idx, cluster := range dbscan.Guesses() {
+		switch column {
+		case c.ColumnNames.StyleEmbedding:
+			c.Products[idx].StyleCluster = cluster
+		case c.ColumnNames.UseCaseEmbedding:
+			c.Products[idx].UseCaseCluster = cluster
 		}
 	}
 

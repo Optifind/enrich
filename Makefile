@@ -25,6 +25,12 @@ init: $(BINARY_DIR)/init_db
 api: $(BINARY_DIR)/api
 	$(BINARY_DIR)/api
 
+# Cluster target
+cluster: $(BINARY_DIR)/cluster
+	$(BINARY_DIR)/cluster
+	rm $(DUMP_FILEPATH)
+	pg_dump -Fc --no-acl --no-owner -h $(HOST) -U $(USERNAME) -d $(DB_NAME) -f $(DUMP_FILEPATH)
+
 # Test target
 test:
 	$(GO_TEST) ./pkg/vector/
@@ -35,6 +41,9 @@ build-init: $(BINARY_DIR)/init_db
 
 # Build api binary
 build-api: $(BINARY_DIR)/api
+
+# Build cluster target
+build-cluster: $(BINARY_DIR)/cluster
 
 # Ensure binaries directory exists
 $(BINARY_DIR):
@@ -47,6 +56,10 @@ $(BINARY_DIR)/init_db: scripts/init_db/init_db.go $(shell find pkg -type f) | $(
 # Build api
 $(BINARY_DIR)/api: cmd/api/api.go $(shell find pkg -type f) | $(BINARY_DIR)
 	$(GO_BUILD) -o $(BINARY_DIR)/api cmd/api/api.go
+
+# Build cluster
+$(BINARY_DIR)/cluster: scripts/cluster/cluster_products.go $(shell find pkg -type f) | $(BINARY_DIR)
+	$(GO_BUILD) -o $(BINARY_DIR)/cluster scripts/cluster/cluster_products.go
 
 # Clean build artifacts
 clean:

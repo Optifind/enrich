@@ -28,7 +28,14 @@
     "embeddings-model": "text-embedding-3-small"
   },
   "clusters": {
-    "style-k": 20,
-    "use-case-k": 30
+    "algorithm": "dbscan",
+    "dbscan": {
+      "min-points": 1,
+      "epsilon": 0.6
+    },
+    "k-means": {
+      "style-k": 20,
+      "use-case-k": 30
+    }
   }
 }

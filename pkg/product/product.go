@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	openaisdk "github.com/lattots/openai-sdk"
-	"github.com/muesli/clusters"
+	"github.com/pgvector/pgvector-go"
 
 	"github.com/lattots/enrich/pkg/config"
 	"github.com/lattots/enrich/pkg/prompts"
@@ -25,10 +25,8 @@ type Product struct {
 	StyleText   string `json:"style-text"`    // Description of products design style
 	UseCaseText string `json:"use-case-text"` // Description of products use case
 
-	StyleEmbedding     []float32 `json:"style-embedding"` // Embedding of product's design style
-	StyleObservation   clusters.Observation
-	UseCaseEmbedding   []float32 `json:"use-case-embedding"` // Embedding of product's use case
-	UseCaseObservation clusters.Observation
+	StyleEmbedding   []float32 `json:"style-embedding"`    // Embedding of product's design style
+	UseCaseEmbedding []float32 `json:"use-case-embedding"` // Embedding of product's use case
 
 	StyleCluster   int `json:"style-cluster"`    // Cluster number of products design style
 	UseCaseCluster int `json:"use-case-cluster"` // Cluster number of products use case
@@ -228,4 +226,63 @@ func createEmbedding(client openaisdk.APIClient, embeddingsModel, text string) (
 // CreateAttributes TODO: Method should create product attributes with GPT and parse them to Attributes object.
 func (p *Product) CreateAttributes(client openaisdk.APIClient, GPTModel string, prompt []openaisdk.Message) error {
 	return errors.New("NOT IMPLEMENTED")
+}
+
+// Update updates the database entry of the product
+func (p *Product) Update(db *sql.DB, tableName string, cn config.ColumnNames) error {
+	stmt := fmt.Sprintf(`
+		UPDATE %s 
+		SET
+			%s = $1,
+			%s = $2,
+			%s = $3,
+			%s = $4,
+			%s = $5,
+			%s = $6,
+			%s = $7,
+			%s = $8,
+			%s = $9,
+			%s = $10
+		WHERE %s = $11;
+		`,
+		tableName,
+
+		cn.Title,
+		cn.Description,
+
+		cn.Link,
+		cn.Image,
+
+		cn.StyleText,
+		cn.UseCaseText,
+
+		cn.StyleEmbedding,
+		cn.UseCaseEmbedding,
+
+		cn.StyleCluster,
+		cn.UseCaseCluster,
+
+		cn.ID,
+	)
+
+	values := []any{
+		p.Title,
+		p.Description,
+		p.Link,
+		p.Image,
+		p.StyleText,
+		p.UseCaseText,
+		pgvector.NewVector(p.StyleEmbedding),
+		pgvector.NewVector(p.UseCaseEmbedding),
+		p.StyleCluster,
+		p.UseCaseCluster,
+		p.ID,
+	}
+
+	_, err := db.Exec(stmt, values...)
+	if err != nil {
+		return fmt.Errorf("error updating product: %w", err)
+	}
+
+	return nil
 }

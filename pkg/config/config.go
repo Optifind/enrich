@@ -52,10 +52,21 @@ type OpenAI struct {
 	EmbeddingsModel string `json:"embeddings-model"`
 }
 
-// Clusters is a struct for holding clustering options related to k-means clustering
+// Clusters is a struct for holding clustering options related to clustering
 type Clusters struct {
+	Algorithm string        `json:"algorithm"`
+	KMeans    KMeansOptions `json:"k-means"`
+	DBSCAN    DBSCANOptions `json:"dbscan"`
+}
+
+type KMeansOptions struct {
 	StyleK   int `json:"style-k"`    // k used for clustering products based on style
 	UseCaseK int `json:"use-case-k"` // k used for clustering products based on use case
+}
+
+type DBSCANOptions struct {
+	MinPoints int     `json:"min-points"` // Minimum number of points to consider point a central point
+	Epsilon   float64 `json:"epsilon"`    // Radius of area to check for other points
 }
 
 // Load loads the configuration object from JSON. Returns Config object and an error.
