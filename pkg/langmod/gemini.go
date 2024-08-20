@@ -163,6 +163,10 @@ func (m *Gemini) getImageData(url string) ([]byte, error) {
 func detectImageFormat(img []byte) (format string, err error) {
 	reader := bytes.NewReader(img)
 	_, format, err = image.DecodeConfig(reader)
+
+	// Function ignores jpeg feature error
+	// See https://github.com/golang/go/issues/62421 for explanation
+	// This should not affect the use in this case
 	if err != nil && !errors.Is(err, jpeg.UnsupportedError("luma/chroma subsampling ratio")) {
 		return "", err
 	}
