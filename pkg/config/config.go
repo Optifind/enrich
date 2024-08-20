@@ -10,9 +10,9 @@ import (
 // Config is a struct for holding configuration options.
 // Configurations are read from JSON at runtime, so they can be changed without recompiling the entire program.
 type Config struct {
-	Filepaths Filepaths `json:"filepaths"`
-	DB        Database  `json:"db"`      // All database settings and configurations
-	OpenAI    OpenAI    `json:"open-ai"` // OpenAI settings
+	Filepaths Filepaths     `json:"filepaths"`
+	DB        Database      `json:"db"`             // All database settings and configurations
+	LM        LanguageModel `json:"language-model"` // Language model settings
 }
 
 // Filepaths is a struct for holding file paths used in database initialization.
@@ -23,9 +23,8 @@ type Filepaths struct {
 }
 
 type Database struct {
-	ProductTable     string      `json:"product-table"`
-	ColumnNames      ColumnNames `json:"column-names"`
-	VectorDimensions int         `json:"vector-dimensions"`
+	ProductTable string      `json:"product-table"`
+	ColumnNames  ColumnNames `json:"column-names"`
 }
 
 // ColumnNames is a struct for holding column names used database table.
@@ -43,9 +42,21 @@ type ColumnNames struct {
 	Attributes       string `json:"attributes"`
 }
 
-// OpenAI is a struct for holding OpenAI settings.
-type OpenAI struct {
-	GPTModel        string `json:"gpt-model"`
+// LanguageModel is a struct for holding language model settings
+type LanguageModel struct {
+	ActiveProvider string          `json:"active-provider"`
+	Providers      ProviderOptions `json:"provider-options"`
+}
+
+// ProviderOptions is a library of options for different language model providers
+type ProviderOptions struct {
+	Gemini ProviderOption `json:"gemini"`
+	OpenAI ProviderOption `json:"openai"`
+}
+
+// ProviderOption contains options for given language model provider
+type ProviderOption struct {
+	GenerativeModel string `json:"generative-model"`
 	EmbeddingsModel string `json:"embeddings-model"`
 }
 

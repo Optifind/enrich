@@ -37,3 +37,21 @@ func vecToString(vec []float32) string {
 	}
 	return strings.Join(texts, ",")
 }
+
+// ToFloat32 converts the input vector of float64 to float32
+func ToFloat32(vec []float64) []float32 {
+	newVec := make([]float32, len(vec))
+	for i := range vec {
+		newVec[i] = float32(vec[i])
+	}
+	return newVec
+}
+
+// ToFloat64 converts the input vector of float32 to float64
+func ToFloat64(vec []float32) []float64 {
+	newVec := make([]float64, len(vec))
+	for i := range vec {
+		newVec[i] = float64(vec[i])
+	}
+	return newVec
+}

@@ -18,11 +18,19 @@
       "style-embedding": "style_embedding",
       "use-case-embedding": "use_case_embedding",
       "attributes": "attributes"
-    },
-    "vector-dimensions": 1536
+    }
   },
-  "open-ai": {
-    "gpt-model": "gpt-4o-mini",
-    "embeddings-model": "text-embedding-3-small"
+  "language-model": {
+    "active-provider": "gemini",
+    "provider-options": {
+      "gemini": {
+        "generative-model": "gemini-1.5-pro",
+        "embeddings-model": "text-embedding-004"
+      },
+      "openai": {
+        "generative-model": "gpt-4o",
+        "embeddings-model": "text-embedding-3-small"
+      }
+    }
   }
 }

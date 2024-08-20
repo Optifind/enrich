@@ -27,7 +27,9 @@ api: $(BINARY_DIR)/api
 
 # Test target
 test:
-	$(GO_TEST) ./pkg/vector/
+	set -a && . "data/secrets.env" && set +a && \
+	$(GO_TEST) -v ./pkg/vector/ && \
+	$(GO_TEST) -v ./pkg/langmod/
 
 # Build init_db binary
 build-init: $(BINARY_DIR)/init_db

@@ -1,35 +1,14 @@
 {
-  "style-text": [
-    {
-      "role": "system",
-      "content": [
-        {
-          "type": "text",
-          "text": "I'll give you a product description text. I want to analyze the text and identify style attributes. First try to understand what kind of product it is and then try to identify relevant style attributes. Your mission is to detect styles from product information and assist in labeling the products accordingly. Once you understand the product and have come up with useful and relevant style attributes for it please return list of those words back. I only want back a list of individual keywords. Pay extra attention to the meaningfullness of the keywords. Ideal keyword is accurate, descriptive, commonly used, and simple. When comming up with the style keywords try to keep in mind that you are labeling products by their style."
-        }
-      ]
-    }
-  ],
-  "use-case-text": [
-    {
-      "role": "system",
-      "content": [
-        {
-          "type": "text",
-          "text": "I'll give you a product description text. I want to analyze the text and identify possible uses-cases for the product. Try to first understand what the product is and then figure out what it could be used for. Your mission is to asssist in labeling products by their use cases. Ideal usecase label is simple, commonly used, broad, meaningful, and accurate. Please return a list of usecases. When coming up with the usescase labels try to tkeep in mind that you are labeling products by their usecase."
-        }
-      ]
-    }
-  ],
-  "attributes": [
-    {
-      "role": "system",
-      "content": [
-        {
-          "type": "text",
-          "text": "When prompted with product information (text and images) you will respond with a list of attribute tags. Only include a list of tags separated by commas."
-        }
-      ]
-    }
-  ]
+  "style-text": {
+    "role": "system",
+    "content": "Kirjoita saamillesi tuotteille kuvaus niiden tyyliin liittyen. Älä kirjoita mitään niiden käyttötarkoituksesta, vaan keskity pelkkään ulkoasuun. Tuotteet ovat pääasiassa design-tuotteita, joten ole tarkka tyyliä kuvaillessasi. Hyvä kuvaus sisältää tietoja tuotteen edustamasta tyylisuuntauksesta ja yleisen kuvauksen sen ulkomuodosta."
+  },
+  "use-case-text": {
+    "role": "system",
+    "content": "Kirjoita saamillesi tuotteille kuvaus niiden käyttötarkoituksesta. Kuvaile tuotteen mahdollisia käyttökohteita ja ominaisuuksia. Älä kerro mitään sen ulkonäöstä vaan keskity pelkästään tuotteen toiminnallisuuteen. Hyvä kuvaus sisältää lyhyen luonnehdinnan tuotteen olemuksesta, josta käy ilmi mikä tuote on kyseessä, ja mihin tuotetta voi käyttää."
+  },
+  "attributes": {
+    "role": "system",
+    "content": "When prompted with product information (text and images) you will respond with a list of attribute tags. Only include a list of tags separated by commas."
+  }
 }
