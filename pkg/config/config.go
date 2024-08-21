@@ -13,6 +13,7 @@ type Config struct {
 	Filepaths Filepaths     `json:"filepaths"`
 	DB        Database      `json:"db"`             // All database settings and configurations
 	LM        LanguageModel `json:"language-model"` // Language model settings
+	Clusters  Clusters  `json:"clusters"` // Clustering options
 }
 
 // Filepaths is a struct for holding file paths used in database initialization.
@@ -39,6 +40,8 @@ type ColumnNames struct {
 	UseCaseText      string `json:"use-case-text"`
 	StyleEmbedding   string `json:"style-embedding"`
 	UseCaseEmbedding string `json:"use-case-embedding"`
+	StyleCluster     string `json:"style-cluster"`
+	UseCaseCluster   string `json:"use-case-cluster"`
 	Attributes       string `json:"attributes"`
 }
 
@@ -58,6 +61,23 @@ type ProviderOptions struct {
 type ProviderOption struct {
 	GenerativeModel string `json:"generative-model"`
 	EmbeddingsModel string `json:"embeddings-model"`
+}
+
+// Clusters is a struct for holding clustering options related to clustering
+type Clusters struct {
+	Algorithm string        `json:"algorithm"`
+	KMeans    KMeansOptions `json:"k-means"`
+	DBSCAN    DBSCANOptions `json:"dbscan"`
+}
+
+type KMeansOptions struct {
+	StyleK   int `json:"style-k"`    // k used for clustering products based on style
+	UseCaseK int `json:"use-case-k"` // k used for clustering products based on use case
+}
+
+type DBSCANOptions struct {
+	MinPoints int     `json:"min-points"` // Minimum number of points to consider point a central point
+	Epsilon   float64 `json:"epsilon"`    // Radius of area to check for other points
 }
 
 // Load loads the configuration object from JSON. Returns Config object and an error.

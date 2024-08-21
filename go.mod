@@ -7,6 +7,7 @@ require (
 	github.com/joho/godotenv v1.5.1
 	github.com/lattots/openai-sdk v1.2.1
 	github.com/lib/pq v1.10.9
+	github.com/mpraski/clusters v0.0.0-20171016094157-18104487c312
 	github.com/pgvector/pgvector-go v0.2.1
 	github.com/rs/cors v1.11.0
 	github.com/stretchr/testify v1.9.0
@@ -49,3 +50,5 @@ require (
 	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
+
+require gonum.org/v1/gonum v0.15.0 // indirect

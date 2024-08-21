@@ -17,7 +17,20 @@
       "use-case-text": "use_case_text",
       "style-embedding": "style_embedding",
       "use-case-embedding": "use_case_embedding",
+      "style-cluster": "style_cluster",
+      "use-case-cluster": "use_case_cluster",
       "attributes": "attributes"
+    }
+  },
+  "clusters": {
+    "algorithm": "dbscan",
+    "dbscan": {
+      "min-points": 1,
+      "epsilon": 0.6
+    },
+    "k-means": {
+      "style-k": 20,
+      "use-case-k": 30
     }
   },
   "language-model": {
