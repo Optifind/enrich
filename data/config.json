@@ -17,6 +17,8 @@
       "use-case-text": "use_case_text",
       "style-embedding": "style_embedding",
       "use-case-embedding": "use_case_embedding",
+      "style-cluster": "style_cluster",
+      "use-case-cluster": "use_case_cluster",
       "attributes": "attributes"
     },
     "vector-dimensions": 1536
@@ -24,5 +26,16 @@
   "open-ai": {
     "gpt-model": "gpt-4o-mini",
     "embeddings-model": "text-embedding-3-small"
+  },
+  "clusters": {
+    "algorithm": "dbscan",
+    "dbscan": {
+      "min-points": 1,
+      "epsilon": 0.6
+    },
+    "k-means": {
+      "style-k": 20,
+      "use-case-k": 30
+    }
   }
 }

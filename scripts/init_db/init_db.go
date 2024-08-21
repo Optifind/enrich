@@ -47,6 +47,11 @@ func main() {
 		log.Fatalln("error processing products:", err)
 	}
 
+	err = cat.Cluster(conf.Clusters)
+	if err != nil {
+		log.Fatalln("error creating clusters:", err)
+	}
+
 	err = cat.InitDatabase()
 	if err != nil {
 		log.Fatalln("error initializing database:", err)
