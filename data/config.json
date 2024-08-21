@@ -20,12 +20,7 @@
       "style-cluster": "style_cluster",
       "use-case-cluster": "use_case_cluster",
       "attributes": "attributes"
-    },
-    "vector-dimensions": 1536
-  },
-  "open-ai": {
-    "gpt-model": "gpt-4o-mini",
-    "embeddings-model": "text-embedding-3-small"
+    }
   },
   "clusters": {
     "algorithm": "dbscan",
@@ -36,6 +31,19 @@
     "k-means": {
       "style-k": 20,
       "use-case-k": 30
+    }
+  },
+  "language-model": {
+    "active-provider": "gemini",
+    "provider-options": {
+      "gemini": {
+        "generative-model": "gemini-1.5-pro",
+        "embeddings-model": "text-embedding-004"
+      },
+      "openai": {
+        "generative-model": "gpt-4o",
+        "embeddings-model": "text-embedding-3-small"
+      }
     }
   }
 }

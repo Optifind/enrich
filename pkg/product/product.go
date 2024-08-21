@@ -5,10 +5,10 @@ import (
 	"errors"
 	"fmt"
 
-	openaisdk "github.com/lattots/openai-sdk"
 	"github.com/pgvector/pgvector-go"
 
 	"github.com/lattots/enrich/pkg/config"
+	"github.com/lattots/enrich/pkg/langmod"
 	"github.com/lattots/enrich/pkg/prompts"
 )
 
@@ -105,126 +105,57 @@ func GetById(db *sql.DB, config config.Config, id string) (*Product, error) {
 }
 
 // Process processes single product. This means creating style and
-// use case texts and creating embeddings for some of the fields.
+// use case texts and creating embeddings for them.
 // Returns an error.
-func (p *Product) Process(client openaisdk.APIClient, GPTModel, embeddingsModel string, prompts prompts.Prompts) error {
-	// Style text is created and saved to product's StyleText field.
-	err, _ := p.CreateStyleText(client, GPTModel, prompts.StyleText)
-	if err != nil {
-		return err
-	}
+func (p *Product) Process(model langmod.LangMod, prompts prompts.Prompts) error {
+	productInfo := fmt.Sprintf("Title: %s\nDescription: %s", p.Title, p.Description)
 
-	// Use case text is created and saved to product's UseCaseText field.
-	err, _ = p.CreateUseCaseText(client, GPTModel, prompts.UseCaseText)
+	styleText, err := model.CreateChatResponse(
+		langmod.NewTextInput(prompts.StyleText.Content, prompts.StyleText.Role),
+		langmod.NewImageInput(p.Image, "user"),
+		langmod.NewTextInput(productInfo, "user"),
+	)
 	if err != nil {
-		return err
+		return fmt.Errorf("error creating style text: %w", err)
 	}
+	p.StyleText = styleText
+
+	useCaseText, err := model.CreateChatResponse(
+		langmod.NewTextInput(prompts.UseCaseText.Content, prompts.UseCaseText.Role),
+		langmod.NewImageInput(p.Image, "user"),
+		langmod.NewTextInput(productInfo, "user"),
+	)
+	if err != nil {
+		return fmt.Errorf("error creating use case text: %w", err)
+	}
+	p.UseCaseText = useCaseText
 
 	// Embeddings are created and saved to product's embeddings fields depending on which embeddings are specified.
 	// See CreateEmbeddings for additional information.
-	err = p.CreateEmbeddings(client, embeddingsModel)
+	err = p.CreateEmbeddings(model)
 	return err
 }
 
-// CreateStyleText creates style description with OpenAI's GPT model according to prompts.
-// Resulting description is saved to product's StyleText field. Returns an error.
-func (p *Product) CreateStyleText(client openaisdk.APIClient, GPTModel string, prompt []openaisdk.Message) (error, int) {
-	// Product information is concatenated to a single string.
-	productInfo := fmt.Sprintf("Title: %s\nDescription: %s", p.Title, p.Description)
-
-	// Chat message object is created with the product's information as the content.
-	productMsg := openaisdk.Message{
-		Role: "user",
-		Content: []openaisdk.Content{
-			openaisdk.NewTextContent(productInfo),
-			openaisdk.NewImageContent(p.Image, "low"),
-		},
-	}
-
-	// This prompt includes the pre-defined "system" prompt and the product specific information.
-	fullPrompt := append(prompt, productMsg)
-
-	// Chat completion is created with the prompt messages and product information.
-	resp, err := client.CreateChatCompletion(GPTModel, fullPrompt, 3000)
-	if err != nil {
-		return err, 0
-	}
-
-	// Style text is saved to the product object.
-	p.StyleText = resp.Choices[0].Message.Content
-	return nil, resp.Usage.TotalTokens
-}
-
-// CreateUseCaseText creates use case description with OpenAI's GPT model according to prompts.
-// Resulting description is saved to product's UseCaseText field. Returns an error.
-func (p *Product) CreateUseCaseText(client openaisdk.APIClient, GPTModel string, prompt []openaisdk.Message) (error, int) {
-	// Product information is concatenated to a single string.
-	productInfo := fmt.Sprintf("Title: %s\nDescription: %s", p.Title, p.Description)
-
-	// Chat message object is created with the product's information as the content.
-	productMsg := openaisdk.Message{
-		Role: "user",
-		Content: []openaisdk.Content{
-			openaisdk.NewTextContent(productInfo),
-			openaisdk.NewImageContent(p.Image, "low"),
-		},
-	}
-
-	// This prompt includes the pre-defined "system" prompt and the product specific information.
-	fullPrompt := append(prompt, productMsg)
-
-	// Chat completion is created with the prompt messages and product information.
-	resp, err := client.CreateChatCompletion(GPTModel, fullPrompt, 3000)
-	if err != nil {
-		return err, 0
-	}
-
-	// Use case text is saved to the product object.
-	p.UseCaseText = resp.Choices[0].Message.Content
-	return nil, resp.Usage.TotalTokens
-}
-
-// CreateEmbeddings creates embeddings some or all fields of the product.
-// Currently, method only embeds the style description of the
-// product and saves the embedding to product's StyleEmbedding field.
+// CreateEmbeddings creates embeddings for style text and use case text of the product.
+// Created embeddings are saved to Product's fields StyleEmbedding and UseCaseEmbedding.
 // Returns an error.
-func (p *Product) CreateEmbeddings(client openaisdk.APIClient, embeddingsModel string) error {
-	styleVec, err := createEmbedding(client, embeddingsModel, p.StyleText)
+func (p *Product) CreateEmbeddings(model langmod.LangMod) error {
+	embeddings, err := model.CreateEmbeddings(
+		langmod.NewTextInput(p.StyleText, ""),
+		langmod.NewTextInput(p.UseCaseText, ""),
+	)
 	if err != nil {
-		return fmt.Errorf("error creating style embedding: %w", err)
+		return fmt.Errorf("error creating embeddings: %w", err)
 	}
-	p.StyleEmbedding = styleVec
 
-	useVec, err := createEmbedding(client, embeddingsModel, p.UseCaseText)
-	if err != nil {
-		return fmt.Errorf("error creating use-case embedding: %w", err)
-	}
-	p.UseCaseEmbedding = useVec
+	p.StyleEmbedding = embeddings[0]
+	p.UseCaseEmbedding = embeddings[1]
 
 	return nil
 }
 
-// Creates embedding for text with given OpenAI client. Returns float32 embedding and an error.
-func createEmbedding(client openaisdk.APIClient, embeddingsModel, text string) ([]float32, error) {
-	// Embedding for the text is created.
-	resp, err := client.CreateVectorEmbedding(embeddingsModel, text)
-	if err != nil {
-		return nil, err
-	}
-
-	// This is the float64 embedding for the text
-	f64Vector := resp.Data[0].Embedding
-	// Float64 must be converted to float32 for later use
-	f32Vector := make([]float32, len(f64Vector))
-	for i, f := range f64Vector {
-		f32Vector[i] = float32(f)
-	}
-
-	return f32Vector, nil
-}
-
 // CreateAttributes TODO: Method should create product attributes with GPT and parse them to Attributes object.
-func (p *Product) CreateAttributes(client openaisdk.APIClient, GPTModel string, prompt []openaisdk.Message) error {
+func (p *Product) CreateAttributes(model langmod.LangMod, prompt prompts.Prompt) error {
 	return errors.New("NOT IMPLEMENTED")
 }
 

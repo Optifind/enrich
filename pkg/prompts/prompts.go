@@ -5,16 +5,19 @@ import (
 	"fmt"
 	"io"
 	"os"
-
-	openaisdk "github.com/lattots/openai-sdk"
 )
 
 // Prompts is a struct for holding prompts used in chat completion creation.
 // Prompts are loaded from JSON at runtime, so they can be changed without compiling the entire program.
 type Prompts struct {
-	StyleText   []openaisdk.Message `json:"style-text"`
-	UseCaseText []openaisdk.Message `json:"use-case-text"`
-	Attributes  []openaisdk.Message `json:"attributes"`
+	StyleText   Prompt `json:"style-text"`
+	UseCaseText Prompt `json:"use-case-text"`
+	Attributes  Prompt `json:"attributes"`
+}
+
+type Prompt struct {
+	Content string `json:"content"` // text prompt or url to image
+	Role    string `json:"role"`    // for example "system" or "user"
 }
 
 // Load loads prompts from JSON. Returns Prompts object and an error.

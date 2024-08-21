@@ -42,7 +42,7 @@ func main() {
 		log.Fatalln("error reading prompts from file:", err)
 	}
 
-	err = cat.ProcessProducts(conf.OpenAI, prmts)
+	err = cat.ProcessProducts(conf.LM, prmts)
 	if err != nil {
 		log.Fatalln("error processing products:", err)
 	}

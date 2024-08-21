@@ -33,8 +33,10 @@ cluster: $(BINARY_DIR)/cluster
 
 # Test target
 test:
-	$(GO_TEST) ./pkg/vector/
-	$(GO_TEST) ./pkg/catalog/
+	set -a && . "data/secrets.env" && set +a && \
+	$(GO_TEST) -v ./pkg/vector/ && \
+	$(GO_TEST) -v ./pkg/langmod/ && \
+	$(GO_TEST) -v ./pkg/catalog/
 
 # Build init_db binary
 build-init: $(BINARY_DIR)/init_db

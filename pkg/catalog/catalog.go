@@ -11,13 +11,13 @@ import (
 	"strings"
 	"time"
 
-	openaisdk "github.com/lattots/openai-sdk"
 	_ "github.com/lib/pq"
 	"github.com/mpraski/clusters"
 	"github.com/pgvector/pgvector-go"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/lattots/enrich/pkg/config"
+	"github.com/lattots/enrich/pkg/langmod"
 	"github.com/lattots/enrich/pkg/product"
 	"github.com/lattots/enrich/pkg/prompts"
 	"github.com/lattots/enrich/pkg/vector"
@@ -47,7 +47,6 @@ func New(conf config.Config) (*Catalog, error) {
 		DB:            db,
 		ProductTable:  conf.DB.ProductTable,
 		ColumnNames:   conf.DB.ColumnNames,
-		EmbeddingDim:  conf.DB.VectorDimensions,
 	}
 
 	return catalog, nil
@@ -164,9 +163,25 @@ func (c *Catalog) CreateProducts() error {
 // ProcessProducts processes all products. After this all products will have style and use case descriptions and embeddings for some of their fields.
 // See Product.Process() for additional information.
 // Returns an error.
-func (c *Catalog) ProcessProducts(conf config.OpenAI, prompts prompts.Prompts) error {
+func (c *Catalog) ProcessProducts(conf config.LanguageModel, prompts prompts.Prompts) error {
 	fmt.Println("Processing products...")
-	openAIClient := openaisdk.NewAPIClient(os.Getenv("OPENAI_TOKEN"))
+
+	var langMod langmod.LangMod
+	if conf.ActiveProvider == "openai" {
+		var err error
+		langMod, err = langmod.NewOpenAIFromOption(os.Getenv("OPENAI_TOKEN"), conf.Providers.OpenAI)
+		if err != nil {
+			return fmt.Errorf("error creating OpenAI client: %w", err)
+		}
+	} else if conf.ActiveProvider == "gemini" {
+		var err error
+		langMod, err = langmod.NewGeminiFromOption(os.Getenv("GEMINI_TOKEN"), conf.Providers.Gemini)
+		if err != nil {
+			return fmt.Errorf("error creating OpenAI client: %w", err)
+		}
+	} else {
+		return fmt.Errorf("unknown language model provider: %s", conf.ActiveProvider)
+	}
 
 	// errgroup is package for handling errors in a concurrent application
 	var g errgroup.Group
@@ -174,7 +189,7 @@ func (c *Catalog) ProcessProducts(conf config.OpenAI, prompts prompts.Prompts) e
 	for i, p := range c.Products {
 		g.Go(func() error {
 			start := time.Now()
-			if err := p.Process(*openAIClient, conf.GPTModel, conf.EmbeddingsModel, prompts); err != nil {
+			if err := p.Process(langMod, prompts); err != nil {
 				return fmt.Errorf("product %d: %w", i, err)
 			}
 			fmt.Printf("Product %d processed in %s\n", i, time.Since(start))
@@ -182,13 +197,17 @@ func (c *Catalog) ProcessProducts(conf config.OpenAI, prompts prompts.Prompts) e
 		})
 		// Program sleeps to prevent hitting OpenAI API limiter
 		// TODO: Optimize sleep time to better utilize available API capacity
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	// Wait for all goroutines to finish and return the first returned error
 	if err := g.Wait(); err != nil {
 		return fmt.Errorf("error processing product: %w", err)
 	}
+
+	// Dimensionality of embeddings is automatically detected from created embeddings
+	c.EmbeddingDim = len(c.Products[0].StyleEmbedding)
+
 	return nil // If no errors occur, method returns nil
 }
 

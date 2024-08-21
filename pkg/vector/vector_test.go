@@ -111,3 +111,66 @@ func TestGetAverageVec(t *testing.T) {
 		}
 	}
 }
+
+func TestToFloat32(t *testing.T) {
+	tests := []struct {
+		input    []float64
+		expected []float32
+	}{
+		{[]float64{1.1, 2.2, 3.3}, []float32{1.1, 2.2, 3.3}},
+		{[]float64{0.0, -1.1, 4.4}, []float32{0.0, -1.1, 4.4}},
+		{[]float64{}, []float32{}},
+	}
+
+	for _, tt := range tests {
+		result := ToFloat32(tt.input)
+		if !vecEquals(result, tt.expected, 1e-6) {
+			t.Errorf("ToFloat32(%v) = %v; expected %v", tt.input, result, tt.expected)
+		}
+	}
+}
+
+func TestToFloat64(t *testing.T) {
+	tests := []struct {
+		input    []float32
+		expected []float64
+	}{
+		{[]float32{1.1, 2.2, 3.3}, []float64{1.1, 2.2, 3.3}},
+		{[]float32{0.0, -1.1, 4.4}, []float64{0.0, -1.1, 4.4}},
+		{[]float32{}, []float64{}},
+	}
+
+	for _, tt := range tests {
+		result := ToFloat64(tt.input)
+		if !vecEquals(result, tt.expected, 1e-6) {
+			t.Errorf("ToFloat64(%v) = %v; expected %v", tt.input, result, tt.expected)
+		}
+	}
+}
+
+type Float interface {
+	float32 | float64
+}
+
+func vecEquals[T Float](a, b []T, e float64) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	for i := range a {
+		if !floatEquals(a[i], b[i], e) {
+			return false
+		}
+	}
+	return true
+}
+
+func floatEquals[T Float](a, b T, e float64) bool {
+	if a == b {
+		return true
+	}
+	if math.Abs(float64(a-b)) < e {
+		return true
+	}
+	return false
+}
