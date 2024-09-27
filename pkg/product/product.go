@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
+	"strings"
 
 	"github.com/pgvector/pgvector-go"
 
@@ -157,6 +159,65 @@ func (p *Product) CreateEmbeddings(model langmod.LangMod) error {
 // CreateAttributes TODO: Method should create product attributes with GPT and parse them to Attributes object.
 func (p *Product) CreateAttributes(model langmod.LangMod, prompt prompts.Prompt) error {
 	return errors.New("NOT IMPLEMENTED")
+}
+
+// Insert inserts the product to database
+func (p *Product) Insert(db *sql.DB, tableName string, cn config.ColumnNames) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("error beginning transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	values := []any{
+		p.ID,
+		p.Title,
+		p.Description,
+		p.Price,
+		p.Link,
+		p.Image,
+		p.StyleText,
+		p.UseCaseText,
+		p.StyleCluster,
+		p.UseCaseCluster,
+		pgvector.NewVector(p.StyleEmbedding),
+		pgvector.NewVector(p.UseCaseEmbedding),
+	}
+
+	var prefixes []string
+	for i := range values {
+		prefixes = append(prefixes, "$"+strconv.Itoa(i+1))
+	}
+
+	stmt := fmt.Sprintf(
+		"INSERT INTO %s (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) VALUES (%s);",
+		tableName,
+		cn.ID,
+		cn.Title,
+		cn.Description,
+		cn.Price,
+		cn.Link,
+		cn.Image,
+		cn.StyleText,
+		cn.UseCaseText,
+		cn.StyleCluster,
+		cn.UseCaseCluster,
+		cn.StyleEmbedding,
+		cn.UseCaseEmbedding,
+		strings.Join(prefixes, ", "),
+	)
+
+	_, err = tx.Exec(stmt, values...)
+	if err != nil {
+		return fmt.Errorf("error executing statement: %w", err)
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("error committing transaction: %w", err)
+	}
+
+	return nil
 }
 
 // Update updates the database entry of the product

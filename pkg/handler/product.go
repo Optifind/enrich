@@ -77,9 +77,8 @@ func (h *Handler) HandleGetProducts(w http.ResponseWriter, r *http.Request) {
 
 	// Catalog object is created for holding product data.
 	cat := catalog.Catalog{
-		DB:           h.DB,
-		ProductTable: h.Config.DB.ProductTable,
-		ColumnNames:  h.Config.DB.ColumnNames,
+		DB:       h.DB,
+		DBConfig: h.Config.DB,
 	}
 
 	// Specified IDs are loaded to catalog.
@@ -121,9 +120,8 @@ func (h *Handler) HandleGetRandomProducts(w http.ResponseWriter, r *http.Request
 
 	// Catalog object is created for holding product data.
 	cat := catalog.Catalog{
-		DB:           h.DB,
-		ProductTable: h.Config.DB.ProductTable,
-		ColumnNames:  h.Config.DB.ColumnNames,
+		DB:       h.DB,
+		DBConfig: h.Config.DB,
 	}
 
 	// Product info is loaded from Milvus

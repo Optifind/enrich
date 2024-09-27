@@ -1,11 +1,11 @@
 {
   "filepaths": {
-    "catalog-filepath": "./data/csv_input/items_1.csv",
+    "catalog-filepath": "./data/csv_input/items_2.csv",
     "prompts-filepath": "./data/prompts.json",
     "secrets-filepath": "./data/secrets.env"
   },
   "db": {
-    "product-table": "fds_style",
+    "product-table": "products",
     "column-names": {
       "id": "id",
       "title": "title",
@@ -26,7 +26,7 @@
     "algorithm": "dbscan",
     "dbscan": {
       "min-points": 1,
-      "epsilon": 0.6
+      "epsilon": 0.85
     },
     "k-means": {
       "style-k": 20,
@@ -34,7 +34,7 @@
     }
   },
   "language-model": {
-    "active-provider": "gemini",
+    "active-provider": "openai",
     "provider-options": {
       "gemini": {
         "generative-model": "gemini-1.5-pro",
