@@ -515,20 +515,10 @@ func (c *Catalog) dBSCANClusterColumn(minpts int, eps float64, column string) er
 //
 // Returns up to `count` number of product.Product pointers and error.
 func (c *Catalog) SearchSimilarStyle(count int) ([]*product.Product, error) {
-	// Temporary slice for holding all product embeddings in Catalog.
-	productVecs := make([][]float32, len(c.Products))
-	for i, p := range c.Products {
-		productVecs[i] = p.StyleEmbedding
-	}
-	// Average product embedding is calculated.
-	// This vector will be used in the search.
-	avgVec := vector.GetAverageVec(productVecs)
-
-	results, err := c.vectorSearch(avgVec, c.ColumnNames.StyleEmbedding, count)
+	results, err := c.searchSimilar(count, c.ColumnNames.StyleEmbedding)
 	if err != nil {
-		return nil, fmt.Errorf("error vector searching db: %w", err)
+		return nil, err
 	}
-
 	return results, nil
 }
 
@@ -536,16 +526,35 @@ func (c *Catalog) SearchSimilarStyle(count int) ([]*product.Product, error) {
 //
 // Returns up to `count` number of product.Product pointers and error.
 func (c *Catalog) SearchSimilarUseCase(count int) ([]*product.Product, error) {
+	results, err := c.searchSimilar(count, c.ColumnNames.UseCaseEmbedding)
+	if err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+func (c *Catalog) searchSimilar(count int, metricColumn string) ([]*product.Product, error) {
+	// Slice for holding all product IDs in the Catalog
+	ids := make([]string, len(c.Products))
 	// Temporary slice for holding all product embeddings in Catalog.
 	productVecs := make([][]float32, len(c.Products))
 	for i, p := range c.Products {
-		productVecs[i] = p.UseCaseEmbedding
+		ids[i] = p.ID
+		switch metricColumn {
+		case c.ColumnNames.UseCaseEmbedding:
+			productVecs[i] = p.UseCaseEmbedding
+		case c.ColumnNames.StyleEmbedding:
+			productVecs[i] = p.StyleEmbedding
+		default:
+			return nil, errors.New(fmt.Sprintf("unknown column: %s", metricColumn))
+		}
 	}
 	// Average product embedding is calculated.
 	// This vector will be used in the search.
 	avgVec := vector.GetAverageVec(productVecs)
 
-	results, err := c.vectorSearch(avgVec, c.ColumnNames.UseCaseEmbedding, count)
+	// Database is searched for
+	results, err := c.vectorSearch(avgVec, metricColumn, count, ids)
 	if err != nil {
 		return nil, fmt.Errorf("error vector searching db: %w", err)
 	}
@@ -554,9 +563,9 @@ func (c *Catalog) SearchSimilarUseCase(count int) ([]*product.Product, error) {
 }
 
 // vectorSearch searches the database with the given vector on the given column. It returns up to count number of products.
-func (c *Catalog) vectorSearch(vec []float32, vecColumn string, count int) ([]*product.Product, error) {
+func (c *Catalog) vectorSearch(vec []float32, vecColumn string, count int, excludedIDs []string) ([]*product.Product, error) {
 	query := fmt.Sprintf(
-		"SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s FROM %s ORDER BY %s <=> $1 LIMIT %d;",
+		"SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s FROM %s WHERE %s NOT IN (%s) ORDER BY %s <=> $1 LIMIT %d;",
 		c.ColumnNames.ID,
 		c.ColumnNames.Title,
 		c.ColumnNames.Description,
@@ -568,11 +577,18 @@ func (c *Catalog) vectorSearch(vec []float32, vecColumn string, count int) ([]*p
 		c.ColumnNames.StyleEmbedding,
 		c.ColumnNames.UseCaseEmbedding,
 		c.ProductTable,
+		c.ColumnNames.ID,
+		placeholderList(len(excludedIDs)), // Generate placeholders
 		vecColumn,
 		count,
 	)
 
-	rows, err := c.DB.Query(query, pgvector.NewVector(vec))
+	args := []interface{}{pgvector.NewVector(vec)}
+	for _, id := range excludedIDs {
+		args = append(args, id)
+	}
+
+	rows, err := c.DB.Query(query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("error searching products: %w", err)
 	}
@@ -584,6 +600,15 @@ func (c *Catalog) vectorSearch(vec []float32, vecColumn string, count int) ([]*p
 	}
 
 	return products, nil
+}
+
+// placeholderList generates a comma-separated list of placeholders for PostgreSQL queries.
+func placeholderList(n int) string {
+	placeholders := make([]string, n)
+	for i := range placeholders {
+		placeholders[i] = fmt.Sprintf("$%d", i+2) // Starting from $2 as $1 is used for the vector
+	}
+	return strings.Join(placeholders, ", ")
 }
 
 func toFloat64(vec []float32) []float64 {
