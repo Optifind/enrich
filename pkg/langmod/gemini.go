@@ -208,3 +208,19 @@ func (m *Gemini) CreateEmbeddings(args ...argument) ([][]float32, error) {
 
 	return embeddings, nil
 }
+
+// Close closes the Gemini client
+func (m *Gemini) Close() error {
+	return m.client.Close()
+}
+
+// GetEmbeddingDimensions returns the dimension count of the embeddings created by this language model
+func (m *Gemini) GetEmbeddingDimensions() (int, error) {
+	testString := "Text to be embedded"
+	embeddings, err := m.CreateEmbeddings(NewTextInput(testString, "user"))
+	if err != nil {
+		return 0, err
+	}
+
+	return len(embeddings[0]), nil
+}

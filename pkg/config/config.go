@@ -13,7 +13,7 @@ type Config struct {
 	Filepaths Filepaths     `json:"filepaths"`
 	DB        Database      `json:"db"`             // All database settings and configurations
 	LM        LanguageModel `json:"language-model"` // Language model settings
-	Clusters  Clusters  `json:"clusters"` // Clustering options
+	Clusters  Clusters      `json:"clusters"`       // Clustering options
 }
 
 // Filepaths is a struct for holding file paths used in database initialization.
@@ -65,7 +65,7 @@ type ProviderOption struct {
 
 // Clusters is a struct for holding clustering options related to clustering
 type Clusters struct {
-	Algorithm string        `json:"algorithm"`
+	Algorithm string        `json:"algorithm"` // Either "k-means" or "dbscan"
 	KMeans    KMeansOptions `json:"k-means"`
 	DBSCAN    DBSCANOptions `json:"dbscan"`
 }

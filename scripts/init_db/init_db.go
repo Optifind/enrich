@@ -42,7 +42,12 @@ func main() {
 		log.Fatalln("error reading prompts from file:", err)
 	}
 
-	err = cat.ProcessProducts(conf.LM, prmts)
+	err = cat.InitDatabase()
+	if err != nil {
+		log.Fatalln("error initializing database:", err)
+	}
+
+	err = cat.ProcessProducts(prmts)
 	if err != nil {
 		log.Fatalln("error processing products:", err)
 	}
@@ -52,18 +57,13 @@ func main() {
 		log.Fatalln("error creating clusters:", err)
 	}
 
-	err = cat.InitDatabase()
+	err = cat.UpdateProducts()
 	if err != nil {
-		log.Fatalln("error initializing database:", err)
-	}
-
-	err = cat.InsertToDB()
-	if err != nil {
-		log.Fatalln("error inserting catalog to database:", err)
+		log.Fatalln("error updating products:", err)
 	}
 
 	err = cat.UpdateIndex()
 	if err != nil {
-		log.Fatalln("error creating index for Milvus collection:", err)
+		log.Fatalln("error creating vector index for product table:", err)
 	}
 }

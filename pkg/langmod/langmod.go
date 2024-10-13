@@ -5,6 +5,8 @@ package langmod
 type LangMod interface {
 	CreateChatResponse(args ...argument) (string, error)
 	CreateEmbeddings(args ...argument) ([][]float32, error)
+	GetEmbeddingDimensions() (int, error)
+	Close() error
 }
 
 type argument interface {

@@ -122,3 +122,19 @@ func (m *OpenAI) CreateEmbeddings(args ...argument) ([][]float32, error) {
 
 	return embeddings, nil
 }
+
+// Close closes the client but OpenAI client doesn't actually need to be closed, but it has to implement LangMod interface
+func (m *OpenAI) Close() error {
+	return nil
+}
+
+// GetEmbeddingDimensions returns the dimension count of the embeddings created by this language model
+func (m *OpenAI) GetEmbeddingDimensions() (int, error) {
+	testString := "Text to be embedded"
+	embeddings, err := m.CreateEmbeddings(NewTextInput(testString, "user"))
+	if err != nil {
+		return 0, err
+	}
+
+	return len(embeddings[0]), nil
+}

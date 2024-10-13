@@ -28,9 +28,9 @@ type Catalog struct {
 	InputFilepath string             // Path to the input CSV file
 	Products      []*product.Product // Slice of pointers to products that belong to the catalog
 	DB            *sql.DB            // Database handle for product database
-	ProductTable  string             // Name of the product table
-	ColumnNames   config.ColumnNames // Product table's column names
+	DBConfig      config.Database    // Database configurations like product table name and column names
 	EmbeddingDim  int                // Number of dimensions used by embeddings
+	langMod       langmod.LangMod    // Language model used by this catalog to create products
 }
 
 // New creates a new Catalog object according to configuration options.
@@ -41,12 +41,39 @@ func New(conf config.Config) (*Catalog, error) {
 	if err != nil {
 		return nil, err
 	}
+	err = db.Ping()
+	if err != nil {
+		return nil, err
+	}
+
+	var langMod langmod.LangMod
+	if conf.LM.ActiveProvider == "openai" {
+		var err error
+		langMod, err = langmod.NewOpenAIFromOption(os.Getenv("OPENAI_TOKEN"), conf.LM.Providers.OpenAI)
+		if err != nil {
+			return nil, fmt.Errorf("error creating OpenAI client: %w", err)
+		}
+	} else if conf.LM.ActiveProvider == "gemini" {
+		var err error
+		langMod, err = langmod.NewGeminiFromOption(os.Getenv("GEMINI_TOKEN"), conf.LM.Providers.Gemini)
+		if err != nil {
+			return nil, fmt.Errorf("error creating Gemini client: %w", err)
+		}
+	} else {
+		return nil, fmt.Errorf("unknown language model provider: %s", conf.LM.ActiveProvider)
+	}
+
+	dim, err := langMod.GetEmbeddingDimensions()
+	if err != nil {
+		return nil, fmt.Errorf("error getting embedding dimensions: %w", err)
+	}
 
 	catalog := &Catalog{
 		InputFilepath: conf.Filepaths.CatalogFilepath,
 		DB:            db,
-		ProductTable:  conf.DB.ProductTable,
-		ColumnNames:   conf.DB.ColumnNames,
+		DBConfig:      conf.DB,
+		langMod:       langMod,
+		EmbeddingDim:  dim,
 	}
 
 	return catalog, nil
@@ -63,19 +90,19 @@ func (c *Catalog) Load(count int, ids ...string) error {
 	var queryBuilder strings.Builder
 	queryBuilder.WriteString("SELECT ")
 	queryBuilder.WriteString(strings.Join([]string{
-		c.ColumnNames.ID,
-		c.ColumnNames.Title,
-		c.ColumnNames.Description,
-		c.ColumnNames.Price,
-		c.ColumnNames.Link,
-		c.ColumnNames.Image,
-		c.ColumnNames.StyleText,
-		c.ColumnNames.UseCaseText,
-		c.ColumnNames.StyleEmbedding,
-		c.ColumnNames.UseCaseEmbedding,
+		c.DBConfig.ColumnNames.ID,
+		c.DBConfig.ColumnNames.Title,
+		c.DBConfig.ColumnNames.Description,
+		c.DBConfig.ColumnNames.Price,
+		c.DBConfig.ColumnNames.Link,
+		c.DBConfig.ColumnNames.Image,
+		c.DBConfig.ColumnNames.StyleText,
+		c.DBConfig.ColumnNames.UseCaseText,
+		c.DBConfig.ColumnNames.StyleEmbedding,
+		c.DBConfig.ColumnNames.UseCaseEmbedding,
 	}, ", "))
 	queryBuilder.WriteString(" FROM ")
-	queryBuilder.WriteString(c.ProductTable)
+	queryBuilder.WriteString(c.DBConfig.ProductTable)
 
 	var args []interface{}
 	if len(ids) > 0 {
@@ -163,52 +190,53 @@ func (c *Catalog) CreateProducts() error {
 // ProcessProducts processes all products. After this all products will have style and use case descriptions and embeddings for some of their fields.
 // See Product.Process() for additional information.
 // Returns an error.
-func (c *Catalog) ProcessProducts(conf config.LanguageModel, prompts prompts.Prompts) error {
+func (c *Catalog) ProcessProducts(prompts prompts.Prompts) error {
 	fmt.Println("Processing products...")
 
-	var langMod langmod.LangMod
-	if conf.ActiveProvider == "openai" {
-		var err error
-		langMod, err = langmod.NewOpenAIFromOption(os.Getenv("OPENAI_TOKEN"), conf.Providers.OpenAI)
-		if err != nil {
-			return fmt.Errorf("error creating OpenAI client: %w", err)
-		}
-	} else if conf.ActiveProvider == "gemini" {
-		var err error
-		langMod, err = langmod.NewGeminiFromOption(os.Getenv("GEMINI_TOKEN"), conf.Providers.Gemini)
-		if err != nil {
-			return fmt.Errorf("error creating OpenAI client: %w", err)
-		}
-	} else {
-		return fmt.Errorf("unknown language model provider: %s", conf.ActiveProvider)
-	}
-
 	// errgroup is package for handling errors in a concurrent application
-	var g errgroup.Group
+	var pErrGroup errgroup.Group // product processor error group
+	var iErrGroup errgroup.Group // product inserter error group
 
+	productCh := make(chan *product.Product) // Channel for passing products to inserter
+	inserter := product.NewInserter(c.DB, productCh, c.DBConfig)
+	iErrGroup.Go(inserter.ListenAndInsert) // Product inserter is started
+
+	// All products are processed and inserted to database
 	for i, p := range c.Products {
-		g.Go(func() error {
+		// Sub-process in the product error group is started
+		pErrGroup.Go(func() error {
 			start := time.Now()
-			if err := p.Process(langMod, prompts); err != nil {
-				return fmt.Errorf("product %d: %w", i, err)
+			// Product is processed
+			// If processing fails, it is retried once
+			if err := p.Process(c.langMod, prompts); err != nil {
+				fmt.Printf("error processing product %s: %s\nTrying again...\n", p.ID, err)
+				// Processing is retried once
+				// If this fails, method exits with errors
+				err = p.Process(c.langMod, prompts)
+				if err != nil {
+					return fmt.Errorf("product %d: %w", i, err)
+				}
 			}
 			fmt.Printf("Product %d processed in %s\n", i, time.Since(start))
+			productCh <- p // Processed product is passed to inserter via the channel
 			return nil
 		})
-		// Program sleeps to prevent hitting OpenAI API limiter
+		// Program sleeps to prevent hitting API limiter
 		// TODO: Optimize sleep time to better utilize available API capacity
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 	}
 
 	// Wait for all goroutines to finish and return the first returned error
-	if err := g.Wait(); err != nil {
+	if err := pErrGroup.Wait(); err != nil {
 		return fmt.Errorf("error processing product: %w", err)
 	}
+	close(productCh) // Closing the product channel stops the inserter
 
-	// Dimensionality of embeddings is automatically detected from created embeddings
-	c.EmbeddingDim = len(c.Products[0].StyleEmbedding)
-
-	return nil // If no errors occur, method returns nil
+	// If inserter stops with no errors, method exits with nil
+	if err := iErrGroup.Wait(); err != nil {
+		return fmt.Errorf("error inserting products: %w", err)
+	}
+	return nil
 }
 
 // InitDatabase initializes a new database collection with the catalogs' information.
@@ -233,7 +261,7 @@ func (c *Catalog) InitDatabase() error {
 
 func (c *Catalog) dropTable() error {
 	fmt.Println("Dropping table...")
-	stmt := fmt.Sprintf("DROP TABLE IF EXISTS %s", c.ProductTable)
+	stmt := fmt.Sprintf("DROP TABLE IF EXISTS %s", c.DBConfig.ProductTable)
 	_, err := c.DB.Exec(stmt)
 	if err != nil {
 		return fmt.Errorf("error dropping table: %w", err)
@@ -257,20 +285,20 @@ func (c *Catalog) createTable() error {
 		%s VECTOR(%d),
 		%s VECTOR(%d)
     	);`,
-		c.ProductTable,
-		c.ColumnNames.ID,
-		c.ColumnNames.Title,
-		c.ColumnNames.Description,
-		c.ColumnNames.Price,
-		c.ColumnNames.Link,
-		c.ColumnNames.Image,
-		c.ColumnNames.StyleText,
-		c.ColumnNames.UseCaseText,
-		c.ColumnNames.StyleCluster,
-		c.ColumnNames.UseCaseCluster,
-		c.ColumnNames.StyleEmbedding,
+		c.DBConfig.ProductTable,
+		c.DBConfig.ColumnNames.ID,
+		c.DBConfig.ColumnNames.Title,
+		c.DBConfig.ColumnNames.Description,
+		c.DBConfig.ColumnNames.Price,
+		c.DBConfig.ColumnNames.Link,
+		c.DBConfig.ColumnNames.Image,
+		c.DBConfig.ColumnNames.StyleText,
+		c.DBConfig.ColumnNames.UseCaseText,
+		c.DBConfig.ColumnNames.StyleCluster,
+		c.DBConfig.ColumnNames.UseCaseCluster,
+		c.DBConfig.ColumnNames.StyleEmbedding,
 		c.EmbeddingDim,
-		c.ColumnNames.UseCaseEmbedding,
+		c.DBConfig.ColumnNames.UseCaseEmbedding,
 		c.EmbeddingDim,
 	)
 
@@ -311,19 +339,19 @@ func (c *Catalog) InsertToDB() error {
 
 	stmt := fmt.Sprintf(
 		"INSERT INTO %s (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) VALUES %s;",
-		c.ProductTable,
-		c.ColumnNames.ID,
-		c.ColumnNames.Title,
-		c.ColumnNames.Description,
-		c.ColumnNames.Price,
-		c.ColumnNames.Link,
-		c.ColumnNames.Image,
-		c.ColumnNames.StyleText,
-		c.ColumnNames.UseCaseText,
-		c.ColumnNames.StyleCluster,
-		c.ColumnNames.UseCaseCluster,
-		c.ColumnNames.StyleEmbedding,
-		c.ColumnNames.UseCaseEmbedding,
+		c.DBConfig.ProductTable,
+		c.DBConfig.ColumnNames.ID,
+		c.DBConfig.ColumnNames.Title,
+		c.DBConfig.ColumnNames.Description,
+		c.DBConfig.ColumnNames.Price,
+		c.DBConfig.ColumnNames.Link,
+		c.DBConfig.ColumnNames.Image,
+		c.DBConfig.ColumnNames.StyleText,
+		c.DBConfig.ColumnNames.UseCaseText,
+		c.DBConfig.ColumnNames.StyleCluster,
+		c.DBConfig.ColumnNames.UseCaseCluster,
+		c.DBConfig.ColumnNames.StyleEmbedding,
+		c.DBConfig.ColumnNames.UseCaseEmbedding,
 		strings.Join(prefixes, ", "),
 	)
 
@@ -354,7 +382,7 @@ func (c *Catalog) UpdateProducts() error {
 	fmt.Println("Updating products...")
 	var err error
 	for _, p := range c.Products {
-		err = p.Update(c.DB, c.ProductTable, c.ColumnNames)
+		err = p.Update(c.DB, c.DBConfig.ProductTable, c.DBConfig.ColumnNames)
 		if err != nil {
 			return fmt.Errorf("error updating product: %w", err)
 		}
@@ -367,8 +395,8 @@ func (c *Catalog) UpdateIndex() error {
 	// Old indices are dropped if they already exist.
 	dropStyleIndex := fmt.Sprintf(
 		"DROP INDEX IF EXISTS %s_%s_idx",
-		c.ProductTable,
-		c.ColumnNames.StyleEmbedding,
+		c.DBConfig.ProductTable,
+		c.DBConfig.ColumnNames.StyleEmbedding,
 	)
 	_, err := c.DB.Exec(dropStyleIndex)
 	if err != nil {
@@ -376,8 +404,8 @@ func (c *Catalog) UpdateIndex() error {
 	}
 	dropUseCaseIndex := fmt.Sprintf(
 		"DROP INDEX IF EXISTS %s_%s_idx",
-		c.ProductTable,
-		c.ColumnNames.UseCaseEmbedding,
+		c.DBConfig.ProductTable,
+		c.DBConfig.ColumnNames.UseCaseEmbedding,
 	)
 	_, err = c.DB.Exec(dropUseCaseIndex)
 	if err != nil {
@@ -389,8 +417,8 @@ func (c *Catalog) UpdateIndex() error {
 	//  It might be smart to try out other parameters
 	createStyleIndex := fmt.Sprintf(
 		"CREATE INDEX ON %s USING hnsw (%s vector_cosine_ops)",
-		c.ProductTable,
-		c.ColumnNames.StyleEmbedding,
+		c.DBConfig.ProductTable,
+		c.DBConfig.ColumnNames.StyleEmbedding,
 	)
 	_, err = c.DB.Exec(createStyleIndex)
 	if err != nil {
@@ -398,8 +426,8 @@ func (c *Catalog) UpdateIndex() error {
 	}
 	createUseCaseIndex := fmt.Sprintf(
 		"CREATE INDEX ON %s USING hnsw (%s vector_cosine_ops)",
-		c.ProductTable,
-		c.ColumnNames.UseCaseEmbedding,
+		c.DBConfig.ProductTable,
+		c.DBConfig.ColumnNames.UseCaseEmbedding,
 	)
 	_, err = c.DB.Exec(createUseCaseIndex)
 	if err != nil {
@@ -413,20 +441,20 @@ func (c *Catalog) UpdateIndex() error {
 func (c *Catalog) Cluster(conf config.Clusters) error {
 	switch conf.Algorithm {
 	case "k-means":
-		err := c.kMeansClusterColumn(conf.KMeans.StyleK, c.ColumnNames.StyleEmbedding)
+		err := c.kMeansClusterColumn(conf.KMeans.StyleK, c.DBConfig.ColumnNames.StyleEmbedding)
 		if err != nil {
 			return fmt.Errorf("error clustering products based on style: %w", err)
 		}
-		err = c.kMeansClusterColumn(conf.KMeans.UseCaseK, c.ColumnNames.UseCaseEmbedding)
+		err = c.kMeansClusterColumn(conf.KMeans.UseCaseK, c.DBConfig.ColumnNames.UseCaseEmbedding)
 		if err != nil {
 			return fmt.Errorf("error clustering products based on use case: %w", err)
 		}
 	case "dbscan":
-		err := c.dBSCANClusterColumn(conf.DBSCAN.MinPoints, conf.DBSCAN.Epsilon, c.ColumnNames.StyleEmbedding)
+		err := c.dBSCANClusterColumn(conf.DBSCAN.MinPoints, conf.DBSCAN.Epsilon, c.DBConfig.ColumnNames.StyleEmbedding)
 		if err != nil {
 			return fmt.Errorf("error clustering products based on style: %w", err)
 		}
-		err = c.dBSCANClusterColumn(conf.DBSCAN.MinPoints, conf.DBSCAN.Epsilon, c.ColumnNames.UseCaseEmbedding)
+		err = c.dBSCANClusterColumn(conf.DBSCAN.MinPoints, conf.DBSCAN.Epsilon, c.DBConfig.ColumnNames.UseCaseEmbedding)
 		if err != nil {
 			return fmt.Errorf("error clustering products based on use case: %w", err)
 		}
@@ -443,9 +471,9 @@ func (c *Catalog) kMeansClusterColumn(k int, column string) error {
 	data := make([][]float64, len(c.Products))
 	for i, p := range c.Products {
 		switch column {
-		case c.ColumnNames.StyleEmbedding:
+		case c.DBConfig.ColumnNames.StyleEmbedding:
 			data[i] = toFloat64(p.StyleEmbedding)
-		case c.ColumnNames.UseCaseEmbedding:
+		case c.DBConfig.ColumnNames.UseCaseEmbedding:
 			data[i] = toFloat64(p.UseCaseEmbedding)
 		default:
 			return errors.New("unknown column")
@@ -465,9 +493,9 @@ func (c *Catalog) kMeansClusterColumn(k int, column string) error {
 
 	for idx, cluster := range kmeans.Guesses() {
 		switch column {
-		case c.ColumnNames.StyleEmbedding:
+		case c.DBConfig.ColumnNames.StyleEmbedding:
 			c.Products[idx].StyleCluster = cluster
-		case c.ColumnNames.UseCaseEmbedding:
+		case c.DBConfig.ColumnNames.UseCaseEmbedding:
 			c.Products[idx].UseCaseCluster = cluster
 		}
 	}
@@ -481,9 +509,9 @@ func (c *Catalog) dBSCANClusterColumn(minpts int, eps float64, column string) er
 	data := make([][]float64, len(c.Products))
 	for i, p := range c.Products {
 		switch column {
-		case c.ColumnNames.StyleEmbedding:
+		case c.DBConfig.ColumnNames.StyleEmbedding:
 			data[i] = toFloat64(p.StyleEmbedding)
-		case c.ColumnNames.UseCaseEmbedding:
+		case c.DBConfig.ColumnNames.UseCaseEmbedding:
 			data[i] = toFloat64(p.UseCaseEmbedding)
 		}
 	}
@@ -501,9 +529,9 @@ func (c *Catalog) dBSCANClusterColumn(minpts int, eps float64, column string) er
 
 	for idx, cluster := range dbscan.Guesses() {
 		switch column {
-		case c.ColumnNames.StyleEmbedding:
+		case c.DBConfig.ColumnNames.StyleEmbedding:
 			c.Products[idx].StyleCluster = cluster
-		case c.ColumnNames.UseCaseEmbedding:
+		case c.DBConfig.ColumnNames.UseCaseEmbedding:
 			c.Products[idx].UseCaseCluster = cluster
 		}
 	}
