@@ -22,13 +22,9 @@ func main() {
 		log.Fatalln("error loading config: ", err)
 	}
 
-	env := os.Getenv("ENVIRONMENT")
-	if env == "local" { // If environment is local, secrets are loaded to environment variables
-		fmt.Println("Running in local mode")
-		err := godotenv.Load(conf.Filepaths.SecretsFilepath)
-		if err != nil {
-			log.Fatalln("error loading .env file:", err)
-		}
+	err = godotenv.Load(conf.Filepaths.SecretsFilepath)
+	if err != nil {
+		log.Fatalln("error loading .env file:", err)
 	}
 
 	// New handler object is created. This is used to store configurations and Milvus database handle.
