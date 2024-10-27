@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - main
+      - automated_cicd
 
 jobs:
   Build-and-Deploy:
