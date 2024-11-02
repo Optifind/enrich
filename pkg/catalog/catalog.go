@@ -543,7 +543,7 @@ func (c *Catalog) dBSCANClusterColumn(minpts int, eps float64, column string) er
 //
 // Returns up to `count` number of product.Product pointers and error.
 func (c *Catalog) SearchSimilarStyle(count int) ([]*product.Product, error) {
-	results, err := c.searchSimilar(count, c.ColumnNames.StyleEmbedding)
+	results, err := c.searchSimilar(count, c.DBConfig.ColumnNames.StyleEmbedding)
 	if err != nil {
 		return nil, err
 	}
@@ -554,7 +554,7 @@ func (c *Catalog) SearchSimilarStyle(count int) ([]*product.Product, error) {
 //
 // Returns up to `count` number of product.Product pointers and error.
 func (c *Catalog) SearchSimilarUseCase(count int) ([]*product.Product, error) {
-	results, err := c.searchSimilar(count, c.ColumnNames.UseCaseEmbedding)
+	results, err := c.searchSimilar(count, c.DBConfig.ColumnNames.UseCaseEmbedding)
 	if err != nil {
 		return nil, err
 	}
@@ -569,9 +569,9 @@ func (c *Catalog) searchSimilar(count int, metricColumn string) ([]*product.Prod
 	for i, p := range c.Products {
 		ids[i] = p.ID
 		switch metricColumn {
-		case c.ColumnNames.UseCaseEmbedding:
+		case c.DBConfig.ColumnNames.UseCaseEmbedding:
 			productVecs[i] = p.UseCaseEmbedding
-		case c.ColumnNames.StyleEmbedding:
+		case c.DBConfig.ColumnNames.StyleEmbedding:
 			productVecs[i] = p.StyleEmbedding
 		default:
 			return nil, errors.New(fmt.Sprintf("unknown column: %s", metricColumn))
@@ -594,18 +594,18 @@ func (c *Catalog) searchSimilar(count int, metricColumn string) ([]*product.Prod
 func (c *Catalog) vectorSearch(vec []float32, vecColumn string, count int, excludedIDs []string) ([]*product.Product, error) {
 	query := fmt.Sprintf(
 		"SELECT %s, %s, %s, %s, %s, %s, %s, %s, %s, %s FROM %s WHERE %s NOT IN (%s) ORDER BY %s <=> $1 LIMIT %d;",
-		c.ColumnNames.ID,
-		c.ColumnNames.Title,
-		c.ColumnNames.Description,
-		c.ColumnNames.Price,
-		c.ColumnNames.Link,
-		c.ColumnNames.Image,
-		c.ColumnNames.StyleText,
-		c.ColumnNames.UseCaseText,
-		c.ColumnNames.StyleEmbedding,
-		c.ColumnNames.UseCaseEmbedding,
-		c.ProductTable,
-		c.ColumnNames.ID,
+		c.DBConfig.ColumnNames.ID,
+		c.DBConfig.ColumnNames.Title,
+		c.DBConfig.ColumnNames.Description,
+		c.DBConfig.ColumnNames.Price,
+		c.DBConfig.ColumnNames.Link,
+		c.DBConfig.ColumnNames.Image,
+		c.DBConfig.ColumnNames.StyleText,
+		c.DBConfig.ColumnNames.UseCaseText,
+		c.DBConfig.ColumnNames.StyleEmbedding,
+		c.DBConfig.ColumnNames.UseCaseEmbedding,
+		c.DBConfig.ProductTable,
+		c.DBConfig.ColumnNames.ID,
 		placeholderList(len(excludedIDs)), // Generate placeholders
 		vecColumn,
 		count,
