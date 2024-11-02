@@ -106,3 +106,11 @@ FROM
 WHERE 
   table_name = '<table_name>';
 ```
+
+Create extensions
+
+Inorder to create extensions (i.e. install plugins), the user must be a SUPERUSER. The ability to create extensions is required when setting up new database or environment.
+
+```postgresql
+ALTER USER <username> WITH SUPERUSER;
+```
