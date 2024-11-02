@@ -1,0 +1,13 @@
+services:
+  watchtower:  # Watches for updates to OptiFind api image
+    image: containrrr/watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 60  # Interval (seconds) for polling Docker Hub
+    restart: unless-stopped  # Auto-restart if the container crashes
+
+  api:
+    image: lattots/optifind-api:latest  # What image to use
+    network_mode: "host"  # Use host networking
+    container_name: optifind-api  # Set the container name
+    restart: unless-stopped  # Auto-restart if the container crashes
